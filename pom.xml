@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <!-- 与 langchain4j-spring 1.20.0-beta30 配套的 Spring Boot 版本 -->
+        <version>3.5.13</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.lion</groupId>
+    <artifactId>lion-langchain4j-agent</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>lion-langchain4j-agent</name>
+    <description>Lion LangChain4j Agent 后端：Spring Boot 3 + MyBatis-Plus + Sa-Token + Redisson + LangChain4j(千问)</description>
+
+    <properties>
+        <java.version>17</java.version>
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <sa-token.version>1.46.0</sa-token.version>
+        <redisson.version>3.38.1</redisson.version>
+        <!-- langchain4j 1.x: 核心 langchain4j:1.20.0 为稳定版, 官方 Spring Boot Starter
+             采用配套的 beta 版本线(X.Y.0-betaZ, 与核心 X.Y.0 同日发布, 供生产使用),
+             故此处取 1.20.0-beta30(与 langchain4j:1.20.0 配套) -->
+        <langchain4j.version>1.20.0-beta30</langchain4j.version>
+    </properties>
+
+    <dependencies>
+        <!-- Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- 参数校验 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- MyBatis-Plus (Spring Boot 3) -->
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+            <version>${mybatis-plus.version}</version>
+        </dependency>
+        <!-- MySQL 驱动 -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Sa-Token 鉴权 (Spring Boot 3) -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-spring-boot3-starter</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
+        <!-- Sa-Token 整合 Redisson: 登录态持久化到 Redis, 后端重启不再失效 -->
+        <dependency>
+            <groupId>cn.dev33</groupId>
+            <artifactId>sa-token-redisson</artifactId>
+            <version>${sa-token.version}</version>
+        </dependency>
+        <!-- Spring Security Crypto: 仅用 BCrypt 密码哈希, 不引入完整 security 过滤器链 -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
+
+        <!-- Redisson (分布式锁 / 缓存客户端, 由 RedissonConfig 手动装配) -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <version>${redisson.version}</version>
+        </dependency>
+
+        <!-- LangChain4j 核心 Starter + OpenAI 兼容协议 Starter(用于千问 DashScope)。
+             langchain4j-spring-boot-starter 传递引入核心 langchain4j:1.20.0;
+             langchain4j-open-ai-spring-boot-starter 为社区 OpenAI 兼容实现(可配 base-url 指向 DashScope),
+             其内部依赖 langchain4j-open-ai:1.20.0 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-spring-boot-starter</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- 在线接口文档: OpenAPI 3 + Swagger UI(支持在线调用; 2.8.x 官方兼容 Spring Boot 3.5) -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.6</version>
+        </dependency>
+
+        <!-- Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.8.35</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

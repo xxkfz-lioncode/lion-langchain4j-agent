@@ -1,0 +1,80 @@
+# ============================================================
+# Lion LangChain4j Agent - 非敏感配置
+# 敏感信息(数据库密码 / API 密钥等)统一放在项目根目录 .env 文件中,
+# 应用启动时由 EnvFileLoader 加载为系统属性, 此处仅使用 ${...} 占位引用。
+# ============================================================
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      # force=true: 即使请求/响应未声明编码也强制按 UTF-8 处理, 避免中文乱码
+      force: true
+
+spring:
+  application:
+    name: lion-langchain4j-agent
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:lion_agent_4j}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+sa-token:
+  # token 请求头名称(前端 axios 拦截器会携带同名请求头)
+  token-name: satoken
+  # token 有效期(秒): 7 天
+  timeout: 604800
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
+  is-log: false
+
+langchain4j:
+  open-ai:
+    chat-model:
+      # 千问(DashScope)走 OpenAI 兼容协议; api-key 属于敏感信息, 来自 .env
+      api-key: ${QWEN_API_KEY:}
+      base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      model-name: ${QWEN_MODEL_NAME:qwen-plus}
+      temperature: 0.7
+      max-tokens: 2048
+      log-requests: true
+      log-responses: true
+    # 流式对话模型: 独立自动装配(openAiStreamingChatModel), 不配则 AgentAssistant.chatStream 报 streamingChatModel cannot be null
+    streaming-chat-model:
+      api-key: ${QWEN_API_KEY:}
+      base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      model-name: ${QWEN_MODEL_NAME:qwen-plus}
+      temperature: 0.7
+      max-tokens: 2048
+      log-requests: true
+      log-responses: true
+
+# 在线接口文档(springdoc OpenAPI / Swagger UI)
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    display-request-duration: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+    doc-expansion: none
+
+logging:
+  level:
+    com.lion.agent: info
+    # langchain4j 1.x 已移除 openai4j(dev.ai4j.openai4j), 模型请求/响应日志由 langchain4j OpenAI
+    # 模块通过 log-requests/log-responses 配置控制; 需要排查时可将 dev.langchain4j 临时调为 debug
+    dev.ai4j.openai4j: debug

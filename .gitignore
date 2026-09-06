@@ -1,0 +1,27 @@
+# ---- Java / Maven ----
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# ---- 敏感环境变量(禁止提交) ----
+.env
+
+# ---- Node / 前端 ----
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+
+# ---- 日志 ----
+logs/
+*.log
