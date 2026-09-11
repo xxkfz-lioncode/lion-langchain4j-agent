@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
  * MyBatis-Plus 配置
  */
 @Configuration
-@MapperScan("com.lion.agent.mapper")
+@MapperScan({"com.lion.agent.mapper", "com.lion.agent.rag.mapper"})
 public class MybatisPlusConfig {
 
     @Bean

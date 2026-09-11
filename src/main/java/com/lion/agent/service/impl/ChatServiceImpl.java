@@ -1,7 +1,7 @@
 package com.lion.agent.service.impl;
 
-import com.lion.agent.common.BusinessException;
-import com.lion.agent.dto.MessageVO;
+import com.lion.agent.common.exception.BusinessException;
+import com.lion.agent.pojo.vo.MessageVO;
 import com.lion.agent.memory.UserChatMemoryProvider;
 import com.lion.agent.service.AgentAssistant;
 import com.lion.agent.service.ChatService;

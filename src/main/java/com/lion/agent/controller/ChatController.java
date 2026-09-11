@@ -1,10 +1,10 @@
 package com.lion.agent.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.lion.agent.common.BusinessException;
+import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.common.Result;
-import com.lion.agent.dto.ChatReply;
-import com.lion.agent.dto.ChatRequest;
+import com.lion.agent.pojo.dto.ChatReply;
+import com.lion.agent.pojo.dto.ChatRequest;
 import com.lion.agent.service.ChatService;
 import com.lion.agent.service.ConversationService;
 import dev.langchain4j.service.TokenStream;

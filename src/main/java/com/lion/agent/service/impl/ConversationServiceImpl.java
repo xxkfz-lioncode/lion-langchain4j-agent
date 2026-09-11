@@ -1,8 +1,8 @@
 package com.lion.agent.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.lion.agent.dto.ConversationVO;
-import com.lion.agent.entity.ChatConversationEntity;
+import com.lion.agent.pojo.vo.ConversationVO;
+import com.lion.agent.pojo.entity.ChatConversationEntity;
 import com.lion.agent.mapper.ChatConversationMapper;
 import com.lion.agent.service.ConversationService;
 import org.springframework.stereotype.Service;

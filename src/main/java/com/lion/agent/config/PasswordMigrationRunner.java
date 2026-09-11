@@ -1,6 +1,6 @@
 package com.lion.agent.config;
 
-import com.lion.agent.entity.User;
+import com.lion.agent.pojo.entity.User;
 import com.lion.agent.mapper.UserMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;

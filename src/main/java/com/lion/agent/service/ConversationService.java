@@ -1,6 +1,6 @@
 package com.lion.agent.service;
 
-import com.lion.agent.dto.ConversationVO;
+import com.lion.agent.pojo.vo.ConversationVO;
 
 import java.util.List;
 

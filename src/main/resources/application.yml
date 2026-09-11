@@ -15,6 +15,11 @@ server:
 spring:
   application:
     name: lion-langchain4j-agent
+  # 文件上传限制(RAG 知识库文档上传, 默认 1MB 太小)
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: "jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:lion_agent_4j}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
@@ -60,6 +65,47 @@ langchain4j:
       max-tokens: 2048
       log-requests: true
       log-responses: true
+    # 向量化模型(Embedding): RAG 知识库使用, DashScope OpenAI 兼容 /embeddings 接口,
+    # 复用 QWEN_API_KEY; 不配置则缺少 openAiEmbeddingModel Bean, RagService 注入时报错
+    embedding-model:
+      api-key: ${QWEN_API_KEY:}
+      base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      model-name: ${QWEN_EMBEDDING_MODEL:text-embedding-v3}
+      # DashScope 百炼账号需开通 text-embedding-v3 服务; 维度默认 1024, 不额外指定
+      log-requests: true
+      log-responses: true
+
+  # Milvus 向量库(由 langchain4j-milvus-spring-boot-starter 自动装配, 前缀固定 langchain4j.milvus)
+  milvus:
+    enabled: true
+    host: ${MILVUS_HOST:118.25.109.72}
+    port: ${MILVUS_PORT:19530}
+    # 集合名(相当于 Redis 版的索引名), 换集合改这里
+    collection-name: lion_langchain4j_docs
+    # 必须与向量化模型输出维度一致: text-embedding-v3 默认 1024
+    dimension: 1024
+    # FLAT: 精确检索, 数据量小时足够; 数据量大可改 HNSW 提升检索速度
+    index-type: FLAT
+    metric-type: COSINE
+    # STRONG: 强一致, 刚写入(即使还没 flush)的片段也能立刻被检索到
+    consistency-level: STRONG
+    # 必须为 false, 否则上传大文档必报错:
+    # Milvus 服务端默认 quotaAndLimits.flushRate.collection=0.1, 即 10 秒内只放行 1 次 flush;
+    # 而 LangChain4j 的 addAll 在 autoFlushOnInsert=true 时会每批都调 flush, 本地入库按
+    # EMBEDDING_BATCH_SIZE=10 分批, 一篇文档就会 flush 多次 → 抛
+    # ServerException: request is rejected by grpc RateLimiter middleware ... [rate=0.1]
+    # 关闭后数据写入 WAL/growing segment(STRONG 一致下立即可检索), 落盘时机交给 Milvus 自己控制
+    auto-flush-on-insert: false
+    # 检索时不回传向量本身, 减少网络开销(只需 text/metadata)
+    retrieve-embeddings-on-search: false
+    database-name: ${MILVUS_DATABASE:default}
+    # 未启用鉴权时不要配置 username/password(空串会被当作凭据传给 Milvus 导致认证失败)
+
+
+# 知识库(RAG)上传文件保存目录: 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)
+rag:
+  upload-dir: upload
+
 
 # 在线接口文档(springdoc OpenAPI / Swagger UI)
 springdoc:

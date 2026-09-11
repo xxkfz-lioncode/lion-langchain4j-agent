@@ -138,6 +138,18 @@ function renderMd(text = '') {
 
 const messages = ref([])
 
+/**
+ * 过滤出界面需要展示的消息:
+ * - 丢弃 role === 'tool' 的工具过程消息(工具返回结果仅作 Agent 内部上下文);
+ * - 丢弃 content 为空的 assistant(Agent 发起工具调用时的占位消息, 无正文)。
+ * 仅保留「用户提问」与「AI 最终回答」, 避免界面出现空气泡与工具结果冗余。
+ */
+function visibleMessages(list = []) {
+  return list
+    .filter((m) => m.role !== 'tool' && !(m.role === 'assistant' && !m.content))
+    .map((m) => ({ role: m.role, content: m.content }))
+}
+
 function scrollToBottom() {
   nextTick(() => {
     if (listRef.value) {
@@ -154,7 +166,7 @@ async function fetchConversations() {
 /** 加载指定会话的历史消息 */
 async function loadMessages(conversationId) {
   const list = (await listMessages(conversationId)) || []
-  messages.value = list.map((m) => ({ role: m.role, content: m.content }))
+  messages.value = visibleMessages(list)
   scrollToBottom()
 }
 
@@ -276,7 +288,7 @@ async function handleSend() {
       const last = [...list].reverse().find((m) => m.role === 'assistant')
       if (last && last.content) {
         aiMsg.content = last.content
-        messages.value = list.map((m) => ({ role: m.role, content: m.content }))
+        messages.value = visibleMessages(list)
       }
     } catch (e) {
       // 拉取失败则保留本地展示内容

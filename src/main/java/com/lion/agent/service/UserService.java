@@ -1,11 +1,12 @@
 package com.lion.agent.service;
 
 import com.lion.agent.common.PageResult;
-import com.lion.agent.dto.UserCreateRequest;
-import com.lion.agent.dto.UserPageQuery;
-import com.lion.agent.dto.UserUpdateRequest;
-import com.lion.agent.dto.UserVO;
-import com.lion.agent.entity.User;
+import com.lion.agent.common.exception.BusinessException;
+import com.lion.agent.pojo.dto.UserCreateRequest;
+import com.lion.agent.pojo.dto.UserPageQuery;
+import com.lion.agent.pojo.dto.UserUpdateRequest;
+import com.lion.agent.pojo.dto.UserVO;
+import com.lion.agent.pojo.entity.User;
 
 /**
  * 用户服务接口(含登录/注册支撑与管理端维护)
@@ -21,7 +22,7 @@ public interface UserService {
     /**
      * 注册新用户: 校验用户名唯一后入库(密码须为已加密密文)
      *
-     * @throws com.lion.agent.common.BusinessException 用户名已存在
+     * @throws BusinessException 用户名已存在
      */
     void register(User user);
 
@@ -33,35 +34,35 @@ public interface UserService {
     /**
      * 新增用户(用户名唯一校验 + 密码 BCrypt 加密)
      *
-     * @throws com.lion.agent.common.BusinessException 用户名已存在
+     * @throws BusinessException 用户名已存在
      */
     void create(UserCreateRequest request);
 
     /**
      * 编辑用户(用户名唯一校验, 排除自身)
      *
-     * @throws com.lion.agent.common.BusinessException 用户名已存在 / 用户不存在
+     * @throws BusinessException 用户名已存在 / 用户不存在
      */
     void update(Long id, UserUpdateRequest request);
 
     /**
      * 删除用户
      *
-     * @throws com.lion.agent.common.BusinessException 用户不存在
+     * @throws BusinessException 用户不存在
      */
     void delete(Long id);
 
     /**
      * 启用 / 禁用用户
      *
-     * @throws com.lion.agent.common.BusinessException 用户不存在
+     * @throws BusinessException 用户不存在
      */
     void updateStatus(Long id, Integer status);
 
     /**
      * 重置密码(BCrypt 加密)
      *
-     * @throws com.lion.agent.common.BusinessException 用户不存在
+     * @throws BusinessException 用户不存在
      */
     void resetPassword(Long id, String password);
 }

@@ -37,6 +37,10 @@
             <el-icon><ChatDotRound /></el-icon>
             <span>对话助手</span>
           </el-menu-item>
+          <el-menu-item index="/rag">
+            <el-icon><Collection /></el-icon>
+            <span>RAG 知识库</span>
+          </el-menu-item>
           <el-menu-item v-if="auth.isAdmin" index="/user">
             <el-icon><User /></el-icon>
             <span>用户管理</span>
@@ -137,6 +141,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   HomeFilled,
   ChatDotRound,
+  Collection,
   User,
   Setting,
   Menu,

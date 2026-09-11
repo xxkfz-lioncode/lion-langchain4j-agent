@@ -1,7 +1,7 @@
 package com.lion.agent.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.lion.agent.entity.User;
+import com.lion.agent.pojo.entity.User;
 
 /**
  * 用户 Mapper

@@ -50,7 +50,6 @@ public class LionAgentApplication {
             log.info("  当前模型    : {} (DashScope 千问)", modelName);
             log.info("  在线文档    : {}/swagger-ui.html", baseUrl);
             log.info("  OpenAPI     : {}/v3/api-docs", baseUrl);
-            log.info("--------------------------------------------------------------");
             log.info("  前端页面    : http://localhost:5173/auth/login (需启动 frontend)");
             log.info("==============================================================");
         };

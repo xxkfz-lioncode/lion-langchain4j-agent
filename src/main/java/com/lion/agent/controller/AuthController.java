@@ -1,9 +1,9 @@
 package com.lion.agent.controller;
 
 import com.lion.agent.common.Result;
-import com.lion.agent.dto.LoginRequest;
-import com.lion.agent.dto.LoginResult;
-import com.lion.agent.dto.RegisterRequest;
+import com.lion.agent.pojo.dto.LoginRequest;
+import com.lion.agent.pojo.dto.LoginResult;
+import com.lion.agent.pojo.dto.RegisterRequest;
 import com.lion.agent.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;

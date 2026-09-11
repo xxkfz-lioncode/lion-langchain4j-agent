@@ -1,7 +1,7 @@
 package com.lion.agent.memory;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.lion.agent.entity.ChatMessageEntity;
+import com.lion.agent.pojo.entity.ChatMessageEntity;
 import com.lion.agent.mapper.ChatMessageMapper;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;

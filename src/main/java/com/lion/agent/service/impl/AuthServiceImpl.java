@@ -1,11 +1,11 @@
 package com.lion.agent.service.impl;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.lion.agent.common.BusinessException;
-import com.lion.agent.dto.LoginRequest;
-import com.lion.agent.dto.LoginResult;
-import com.lion.agent.dto.RegisterRequest;
-import com.lion.agent.entity.User;
+import com.lion.agent.common.exception.BusinessException;
+import com.lion.agent.pojo.dto.LoginRequest;
+import com.lion.agent.pojo.dto.LoginResult;
+import com.lion.agent.pojo.dto.RegisterRequest;
+import com.lion.agent.pojo.entity.User;
 import com.lion.agent.service.AuthService;
 import com.lion.agent.service.UserService;
 import org.springframework.security.crypto.password.PasswordEncoder;

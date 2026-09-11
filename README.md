@@ -43,7 +43,50 @@ lion-langchain4j-agent/
 - JDK 17+、Maven 3.8+
 - Node.js 18+、npm
 - MySQL 8.x（默认账号密码 `root/123456` 可改）
-- Redis（可选，未开启 Redis 也不影响启动；Redisson 客户端已就绪，token 持久化可接入）
+- Redis（Sa-Token 登录态 / Redisson，普通 redis-server 即可）
+- Milvus 2.4+（RAG 向量库，见下节安装命令）
+
+## Milvus(RAG 向量库)环境：Docker 安装
+
+RAG 向量库使用 **Milvus**，由 `langchain4j-milvus-spring-boot-starter` 自动装配，
+配置项见 `application.yml` 的 `langchain4j.milvus.*`。需 **Milvus 2.4+**
+（低于 2.4 不支持 JSON 字段过滤，按文档删除向量会失败）：
+
+```bash
+# 1. 拉取镜像
+docker pull milvusdb/milvus:latest
+
+# 2. 启动 standalone: 19530 为 SDK 端口, 9091 为健康检查端口
+docker run -d --name milvus-standalone -p 19530:19530 -p 9091:9091 \
+  -v milvus-data:/var/lib/milvus \
+  --restart unless-stopped \
+  milvusdb/milvus:latest standalone
+```
+
+验证服务已就绪：
+
+```bash
+docker exec milvus-standalone curl -s localhost:9091/healthz   # 返回 OK 即健康
+```
+
+collection 名为 `lion_docs`，会按 `dimension: 1024` 自动创建，无需手工建表。
+
+踩坑记录：
+
+- `dimension` 必须与向量化模型输出维度一致（text-embedding-v3 默认 1024）；若同名
+  collection 已存在且维度不同，插入会报维度不匹配，需先手动 drop 旧 collection；
+- 默认一致性为 `BOUNDED`，刚入库的片段可能**检索不到**（表现为「上传成功但问答查不到」），
+  故 yml 显式配置 `consistency-level: STRONG`（强一致，未 flush 的数据也能立即检索）；
+- `auto-flush-on-insert` 必须为 `false`：Milvus 服务端默认
+  `quotaAndLimits.flushRate.collection=0.1`（10 秒只允许 1 次 flush），而 LangChain4j 的
+  `addAll` 在该开关为 `true` 时**每批都会 flush**，一篇文档按 10 个片段一批分批入库必然触发
+  `request is rejected by grpc RateLimiter middleware ... rate limit exceeded[rate=0.1]`。
+  关闭后数据进入 WAL / growing segment（`STRONG` 一致下检索、按 `docId` 删除均不受影响），
+  由 Milvus 自行决定落盘；若确需立即落盘，应在 Milvus 服务端调大
+  `quotaAndLimits.flushRate.collection`，而不是在客户端打开该开关；
+- 未启用 Milvus 鉴权时**不要**配置 `username` / `password`（空串会被当作凭据传参导致认证失败）；
+- Redis 仍用于 Sa-Token 登录态与 Redisson，与向量库无关，普通 `redis-server` 即可，
+  **不再需要 Redis Stack**。
 
 ## 快速开始
 
@@ -72,6 +115,7 @@ lion-langchain4j-agent/
 | SERVER_PORT | 后端端口 | 8080 |
 | DB_HOST / DB_PORT / DB_NAME / DB_USERNAME / DB_PASSWORD | MySQL 连接 | 127.0.0.1:3306 |
 | REDIS_HOST / REDIS_PORT / REDIS_PASSWORD / REDIS_DATABASE | Redis(Redisson) | 127.0.0.1:6379 |
+| MILVUS_HOST / MILVUS_PORT / MILVUS_DATABASE | Milvus(RAG 向量库) | 127.0.0.1:19530 |
 | QWEN_API_KEY | 千问(DashScope)密钥 | 必填 |
 | QWEN_BASE_URL | OpenAI 兼容地址 | dashscope compatible-mode |
 | QWEN_MODEL_NAME | 模型名 | qwen-plus(可换 qwen-max/qwen-turbo) |

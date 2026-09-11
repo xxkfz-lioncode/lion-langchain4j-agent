@@ -2,8 +2,8 @@ package com.lion.agent.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.lion.agent.common.Result;
-import com.lion.agent.dto.ConversationVO;
-import com.lion.agent.dto.MessageVO;
+import com.lion.agent.pojo.vo.ConversationVO;
+import com.lion.agent.pojo.vo.MessageVO;
 import com.lion.agent.service.ChatService;
 import com.lion.agent.service.ConversationService;
 import org.springframework.web.bind.annotation.DeleteMapping;

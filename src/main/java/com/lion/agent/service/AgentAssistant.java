@@ -1,7 +1,7 @@
 package com.lion.agent.service;
 
 import com.lion.agent.memory.UserChatMemoryProvider;
-import com.lion.agent.tools.AgentTools;
+import com.lion.agent.tools.DateTools;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.TokenStream;
@@ -17,7 +17,7 @@ import dev.langchain4j.service.spring.AiServiceWiringMode;
  *    自动装配的模型 Bean(openAiChatModel / openAiStreamingChatModel);
  * 2. chatMemoryProvider 引用 {@link UserChatMemoryProvider}, 按 memoryId(登录用户)隔离会话记忆,
  *    clear() 时调用 provider 移除对应记忆;
- * 3. tools 引用 {@link AgentTools}(该类注册为 Spring Bean, 含 @Tool 方法)。
+ * 3. tools 引用 {@link DateTools}(该类注册为 Spring Bean, 含 @Tool 方法)。
  * <p>
  * 关于阻塞 / 流式: AiServices 依据方法返回类型路由模型——
  * 返回 {@code String} 走 chatModel(整段返回), 返回 {@link TokenStream} 走
@@ -28,7 +28,8 @@ import dev.langchain4j.service.spring.AiServiceWiringMode;
         chatModel = "openAiChatModel",
         streamingChatModel = "openAiStreamingChatModel",
         chatMemoryProvider = "userChatMemoryProvider",
-        tools = "agentTools"
+        // 多个工具直接在数组中用逗号隔开，传入对应的 Bean 名称
+        tools = {"dateTools", "weatherTools"}
 )
 public interface AgentAssistant {
 

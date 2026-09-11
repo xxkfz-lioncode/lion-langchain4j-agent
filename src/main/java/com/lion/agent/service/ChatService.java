@@ -1,6 +1,6 @@
 package com.lion.agent.service;
 
-import com.lion.agent.dto.MessageVO;
+import com.lion.agent.pojo.vo.MessageVO;
 import dev.langchain4j.service.TokenStream;
 
 import java.util.List;

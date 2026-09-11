@@ -28,6 +28,12 @@ const routes = [
         meta: { title: '对话助手', requiresAuth: true }
       },
       {
+        path: 'rag',
+        name: 'rag',
+        component: () => import('@/views/RagView.vue'),
+        meta: { title: 'RAG 知识库', requiresAuth: true }
+      },
+      {
         path: 'user',
         name: 'user',
         component: () => import('@/views/UserView.vue'),

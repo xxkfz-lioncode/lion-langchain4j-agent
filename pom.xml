@@ -93,6 +93,41 @@
             <artifactId>langchain4j-open-ai-spring-boot-starter</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
+        <!-- ==================== RAG 知识库(官方高层组件, 详见 RagService) ====================
+             链路: 文档加载(FileSystemDocumentLoader + PDF 解析器) → 切分(DocumentSplitters)
+             → 分批向量化入库 → EmbeddingStoreContentRetriever 相似度检索。
+             向量化模型: DashScope text-embedding-v3(application.yml embedding-model);
+             向量库: MilvusEmbeddingStore(milvus starter 自动装配), 需 Milvus 2.4+ 服务端。
+        =================================================================================== -->
+        <!-- 本地向量化模型: all-MiniLM-L6-v2(ONNX, 384 维, 模型内置在 jar 中, 离线可用)。
+             当前 RAG 实际使用 DashScope text-embedding-v3(1024 维, 见 application.yml 的
+             langchain4j.open-ai.embedding-model), 该依赖暂无代码引用, 先注释保留备选。
+             若启用: 需提供 AllMiniLmL6V2EmbeddingModel Bean, 并把 langchain4j.milvus.dimension
+             改为 384 后重建 collection(维度不一致会插入失败), 历史向量需重新导入。
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-embeddings-all-minilm-l6-v2</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        -->
+        <!-- PDF 文档解析器: 供 FileSystemDocumentLoader.loadDocument(路径, ApachePdfBoxDocumentParser) 使用 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-document-parser-apache-pdfbox</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <!-- Milvus 向量库: 由 MilvusEmbeddingStoreAutoConfiguration 自动装配
+             MilvusEmbeddingStore(实现 EmbeddingStore<TextSegment>), 配置前缀 langchain4j.milvus -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-milvus-spring-boot-starter</artifactId>
+            <version>${langchain4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-document-parser-apache-tika</artifactId>
+            <version>1.0.0-beta4</version>
+        </dependency>
 
         <!-- Lombok -->
         <dependency>

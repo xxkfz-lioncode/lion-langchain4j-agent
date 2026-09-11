@@ -1,7 +1,7 @@
 package com.lion.agent.config;
 
 import cn.dev33.satoken.stp.StpInterface;
-import com.lion.agent.entity.User;
+import com.lion.agent.pojo.entity.User;
 import com.lion.agent.service.UserService;
 import org.springframework.stereotype.Component;
 
