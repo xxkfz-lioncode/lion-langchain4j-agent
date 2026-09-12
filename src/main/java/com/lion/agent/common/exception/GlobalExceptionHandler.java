@@ -5,10 +5,13 @@ import cn.dev33.satoken.exception.NotRoleException;
 import cn.dev33.satoken.exception.SaTokenException;
 import com.lion.agent.common.Result;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理: 将异常统一转换为 Result 结构返回
@@ -47,6 +50,17 @@ public class GlobalExceptionHandler {
         FieldError fieldError = e.getBindingResult().getFieldError();
         String msg = fieldError == null ? "参数校验失败" : fieldError.getDefaultMessage();
         return Result.fail(Result.CODE_BAD_REQUEST, msg);
+    }
+
+    /**
+     * 静态资源不存在(浏览器自动请求的 /favicon.ico、未暴露的 /actuator/xxx 等)。
+     * 这属于正常的 404, 不是系统故障: 单独处理, 只打 debug 日志, 避免刷 ERROR 堆栈。
+     */
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    @ExceptionHandler(NoResourceFoundException.class)
+    public Result<Void> handleNoResourceFound(NoResourceFoundException e) {
+        log.debug("静态资源不存在: {}", e.getResourcePath());
+        return Result.fail(Result.CODE_NOT_FOUND, "资源不存在");
     }
 
     /** 兜底异常 */

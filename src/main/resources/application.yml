@@ -36,7 +36,7 @@ mybatis-plus:
 
 sa-token:
   # token 请求头名称(前端 axios 拦截器会携带同名请求头)
-  token-name: satoken
+  token-name: sa-token
   # token 有效期(秒): 7 天
   timeout: 604800
   active-timeout: -1
@@ -78,7 +78,7 @@ langchain4j:
   # Milvus 向量库(由 langchain4j-milvus-spring-boot-starter 自动装配, 前缀固定 langchain4j.milvus)
   milvus:
     enabled: true
-    host: ${MILVUS_HOST:118.25.109.72}
+    host: ${MILVUS_HOST:127.0.0.1}
     port: ${MILVUS_PORT:19530}
     # 集合名(相当于 Redis 版的索引名), 换集合改这里
     collection-name: lion_langchain4j_docs
@@ -107,6 +107,21 @@ rag:
   upload-dir: upload
 
 
+# Actuator 监控端点
+# 不配 exposure 时 Spring Boot 只暴露 health, 访问 /actuator/circuitbreakers 会因为
+# "找不到对应 handler" 被 Spring MVC 当作静态资源处理, 抛 NoResourceFoundException(看起来像 404)
+management:
+  endpoints:
+    web:
+      exposure:
+        # circuitbreakers: 熔断器当前状态(CLOSED/OPEN/HALF_OPEN + 失败率)
+        # circuitbreakerevents: 熔断器事件流(成功/失败/状态转换)
+        include: health,info,metrics,circuitbreakers,circuitbreakerevents
+  endpoint:
+    health:
+      show-details: always
+
+
 # 在线接口文档(springdoc OpenAPI / Swagger UI)
 springdoc:
   api-docs:
@@ -124,3 +139,25 @@ logging:
     # langchain4j 1.x 已移除 openai4j(dev.ai4j.openai4j), 模型请求/响应日志由 langchain4j OpenAI
     # 模块通过 log-requests/log-responses 配置控制; 需要排查时可将 dev.langchain4j 临时调为 debug
     dev.ai4j.openai4j: debug
+
+
+resilience4j:
+  circuitbreaker:
+    # 熔断器状态机：CLOSED（关闭，正常放行）→ OPEN（打开，直接拒绝并走 fallback）→ HALF_OPEN（半开，试探放行）
+    instances:
+      # 实例名需与 WeatherApiClient 上 @CircuitBreaker(name = "weatherApi") 一致
+      weatherApi:
+        sliding-window-type: COUNT_BASED          # 基于调用次数的滑动窗口
+        sliding-window-size: 10                   # 统计最近 10 次调用
+        minimum-number-of-calls: 2                # 外部接口流量小，2 次失败即可开始评估（便于快速熔断）
+        failure-rate-threshold: 50                # 失败率超过 50% 时触发熔断
+        wait-duration-in-open-state: 60s          # 熔断器打开后，等待 60 秒进入半开状态
+        permitted-number-of-calls-in-half-open-state: 3 # 半开状态下允许 3 个试探请求
+        record-exceptions:                        # 白名单：只有这些异常计入失败率(不配则默认所有异常都计入)
+          - com.lion.agent.common.exception.BusinessException
+        # ignore-exceptions:                      # 可选：这些异常不算失败，如
+        #   - java.lang.IllegalArgumentException
+
+# 天气工具演示配置(仅学习演示用)：0=不注入故障，1=每次调用必失败，便于观察熔断与降级
+weather:
+  mock-failure-rate: 1

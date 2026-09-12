@@ -154,6 +154,29 @@
             <artifactId>hutool-all</artifactId>
             <version>5.8.35</version>
         </dependency>
+        <!-- Resilience4j 熔断器：防止外部服务故障级联拖垮整个应用 -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-core</artifactId>
+            <version>2.4.0</version>
+        </dependency>
+        <!-- 与 Spring Boot 3.5 配套的 starter; spring-boot4 版面向 Spring Boot 4 / Spring Framework 7, 本项目不适用 -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>2.4.0</version>
+        </dependency>
+        <!-- 注解式熔断(@CircuitBreaker)基于 Spring AOP 切面, 必须引入 AOP Starter(aspectjweaver),
+             否则注解会静默失效(不报错, 但完全不生效) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <!-- 推荐：用于监控和查看容错组件状态 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

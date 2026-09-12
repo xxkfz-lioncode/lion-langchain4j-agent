@@ -28,3 +28,6 @@ logs/
 
 # ---- 知识库上传文件(原始文档留档, 不入库版本控制) ----
 upload/
+
+# ---- 本地笔记(个人升级记录, 不入库) ----
+docs/langchain4j-1.x-upgrade-log.md

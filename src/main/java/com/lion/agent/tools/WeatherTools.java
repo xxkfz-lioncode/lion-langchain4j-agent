@@ -4,15 +4,21 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import org.springframework.stereotype.Component;
 
-import java.util.Random;
-
 /**
- * 获取天气工具
+ * 天气工具(供大模型 function calling 调用)。
+ * <p>
+ * 本类刻意<b>不加</b> {@code @CircuitBreaker} 等 AOP 注解：带 AOP 注解的 Bean 会被 Spring 用
+ * CGLIB 代理，而 LangChain4j 反射扫描 @Tool 注解注册工具时可能扫不到代理子类的方法，导致工具失效。
+ * 熔断保护加在真正的外部依赖客户端 {@link WeatherApiClient} 上。
  */
 @Component
 public class WeatherTools {
 
-    private static final String[] CONDITIONS = {"晴", "晴转多云", "多云", "阴", "小雨", "阵雨", "中雨", "雷阵雨"};
+    private final WeatherApiClient weatherApiClient;
+
+    public WeatherTools(WeatherApiClient weatherApiClient) {
+        this.weatherApiClient = weatherApiClient;
+    }
 
     /**
      * 查询指定城市今天的天气情况
@@ -25,17 +31,7 @@ public class WeatherTools {
         if (city == null || city.isBlank()) {
             return "未提供城市名, 请告诉我您想查询哪个城市的天气。";
         }
-        String name = city.trim();
-        Random random = new Random(name.toLowerCase().hashCode());
-
-        String condition = CONDITIONS[random.nextInt(CONDITIONS.length)];
-        int min = 15 + random.nextInt(10);
-        int max = min + 6 + random.nextInt(8);
-        int current = min + random.nextInt(max - min + 1);
-        int humidity = 40 + random.nextInt(55);
-        int wind = 5 + random.nextInt(25);
-
-        return String.format("%s今日天气: %s, 气温 %d~%d°C, 当前 %d°C, 湿度 %d%%, 风力 %dkm/h(模拟数据, 仅供参考)。",
-                name, condition, min, max, current, humidity, wind);
+        // 经 Spring 代理调用外部接口客户端, 熔断/降级发生在这里
+        return weatherApiClient.queryTodayWeather(city.trim());
     }
 }
