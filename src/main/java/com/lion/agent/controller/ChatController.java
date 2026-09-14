@@ -8,6 +8,9 @@ import com.lion.agent.pojo.dto.ChatRequest;
 import com.lion.agent.service.ChatService;
 import com.lion.agent.service.ConversationService;
 import dev.langchain4j.service.TokenStream;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
@@ -31,6 +34,7 @@ import java.io.IOException;
  * 流式说明: {@link #stream(String, Long)} 返回 SSE(Server-Sent Events)事件流,
  * 千问每生成一个 token 即通过 data: 行推送给前端; 结束推送 {@code data: [DONE]}。
  */
+@Tag(name = "对话", description = "发送消息 / 流式对话 / 清空上下文(需登录, 按用户+会话隔离上下文)")
 @RestController
 @RequestMapping("/api/chat")
 public class ChatController {
@@ -51,6 +55,7 @@ public class ChatController {
     /**
      * 发送消息并获取千问回复(阻塞式)。会话为空时自动新建。
      */
+    @Operation(summary = "发送消息(阻塞式)", description = "等模型整段生成完再返回; conversationId 为空时自动新建会话")
     @PostMapping("/send")
     public Result<ChatReply> send(@RequestBody @Valid ChatRequest request) {
         Long userId = currentUserId();
@@ -70,9 +75,14 @@ public class ChatController {
      * @param message        用户消息(经 URL 编码传入)
      * @param conversationId 会话id(为空时自动新建)
      */
+    @Operation(summary = "流式对话(SSE 逐 token 推送)",
+            description = "响应为 text/event-stream, 每行一个 data: 推送一个 token, 结束推送 data: [DONE]")
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestParam("message") String message,
-                             @RequestParam(value = "conversationId", required = false) Long conversationId) {
+    public SseEmitter stream(
+            @Parameter(description = "用户消息(URL 编码)", required = true, example = "你好")
+            @RequestParam("message") String message,
+            @Parameter(description = "会话id, 为空时自动新建", example = "1")
+            @RequestParam(value = "conversationId", required = false) Long conversationId) {
         if (!StringUtils.hasText(message)) {
             throw new BusinessException("消息内容不能为空");
         }
@@ -100,8 +110,11 @@ public class ChatController {
     }
 
     /** 清空当前指定会话的上下文 */
+    @Operation(summary = "清空会话上下文", description = "仅清除 LangChain4j 记忆, 不删除会话与历史记录")
     @PostMapping("/clear")
-    public Result<Void> clear(@RequestParam(value = "conversationId", required = false) Long conversationId) {
+    public Result<Void> clear(
+            @Parameter(description = "会话id, 为空时自动新建", example = "1")
+            @RequestParam(value = "conversationId", required = false) Long conversationId) {
         Long userId = currentUserId();
         Long finalConversationId = ensureConversation(userId, conversationId);
         chatService.clear(buildMemoryId(userId, finalConversationId));

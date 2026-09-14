@@ -1,6 +1,6 @@
 package com.lion.agent.controller.test;
 
-import com.lion.agent.assistant.AnnotatedAssistant;
+import com.lion.agent.assistant.ManualAssistant;
 import dev.langchain4j.service.TokenStream;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,43 +16,45 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 
 /**
- * 联调测试接口(免登录): 位于 controller.test 包下, Sa-Token 拦截器自动放行。
+ * 编程式助手联调测试接口(免登录): 测试 {@link ManualAssistant} 手工装配的 AiServices。
  * <p>
- * 流式说明: {@link #chatStream(String)} 返回 SSE 事件流, 千问每生成一个 token
- * 即通过 data: 行推送; 结束推送 {@code data: [DONE]}。
+ * 与 {@link TestController}(注解式 {@code @AiService}) 对照使用:
+ * 两者底层模型/记忆/工具语义一致, 区别仅在于工具是通过 ToolSpecification + ToolExecutor
+ * 编程注册, 而不是 {@code @Tool} 注解扫描。
  */
-@Tag(name = "测试-注解式助手", description = "@AiService 注解式助手(@Tool 注解扫描工具)的联调接口, 免登录")
+@Tag(name = "测试-编程式助手", description = "AiServices 手工装配(ToolSpecification + ToolExecutor 编程注册工具)的联调接口, 位于 controller.test 包, 免登录")
 @RestController
-@RequestMapping("/test")
+@RequestMapping("/test/assistant")
 @RequiredArgsConstructor
-public class TestController {
+public class ManualAssistantTestController {
 
     /** SSE 流结束标记 */
     private static final String STREAM_DONE = "[DONE]";
 
-    private final AnnotatedAssistant annotatedAssistant;
+    private final ManualAssistant manualAssistant;
 
     /** 阻塞式对话(整段返回) */
     @Operation(summary = "阻塞式对话(整段返回)",
-            description = "注解式 @AiService, 工具为 @Tool 声明的 getCurrentTime / getTodayWeather(带熔断)")
+            description = "等模型整段生成完再返回。底层工具为编程注册的 getCurrentTime / getTodayWeather(带熔断), "
+                    + "问天气可观察熔断降级文案, 问时间验证无参工具调用。")
     @GetMapping("chat")
     public String chat(
             @Parameter(description = "用户消息", required = true, example = "北京今天天气怎么样")
             @RequestParam("msg") String msg) {
-        return annotatedAssistant.chat("", msg);
+        return manualAssistant.chat("", msg);
     }
 
     /** 流式对话(SSE 逐 token 推送) */
     @Operation(summary = "流式对话(SSE 逐 token 推送)",
-            description = "响应为 text/event-stream, 每个 data: 行推送一个 token, 结束推送 data: [DONE]")
+            description = "响应为 text/event-stream, 每个 data: 行推送一个 token, 结束推送 data: [DONE]。 "
+                    + "浏览器直接访问即可看到逐字输出, 或用 curl 观察。")
     @GetMapping(value = "chatStream", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public SseEmitter chatStream(
             @Parameter(description = "用户消息", required = true, example = "上海天气如何")
             @RequestParam("msg") String msg) {
         SseEmitter emitter = new SseEmitter(0L);
         try {
-            TokenStream tokenStream = annotatedAssistant.chatStream("", msg);
-            // langchain4j 1.x TokenStream API: onPartialResponse / onCompleteResponse / onError
+            TokenStream tokenStream = manualAssistant.chatStream("", msg);
             tokenStream
                     .onPartialResponse(partial -> send(emitter, partial))
                     .onCompleteResponse(response -> {

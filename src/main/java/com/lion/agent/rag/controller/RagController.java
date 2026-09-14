@@ -8,6 +8,9 @@ import com.lion.agent.rag.splitter.SplitterConfig;
 import com.lion.agent.rag.vo.RagDocumentVO;
 import com.lion.agent.rag.vo.RagSplitterVO;
 import com.lion.agent.rag.vo.RagUploadVO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +34,7 @@ import java.util.List;
  * 5. 查看片段数:      GET  /api/rag/size
  * 6. 切分方式列表:    GET  /api/rag/splitters (前端上传时下拉框数据源)
  */
+@Tag(name = "RAG 知识库", description = "文档上传入库 / 知识库问答 / 文档管理(需登录)")
 @RestController
 @RequestMapping("/api/rag")
 public class RagController {
@@ -47,12 +51,21 @@ public class RagController {
      * 切分方式可由前端指定(见 GET /api/rag/splitters): splitterType 选方式,
      * segmentSize / overlap / pattern 覆盖默认参数, 不传则用该方式的默认值。
      */
+    @Operation(summary = "上传知识文档并入库",
+            description = "multipart 上传, 支持 .pdf/.txt/.md, 上限 20MB, 追加式入库(不替换旧知识); "
+                    + "切分方式由 splitterType 等可选参数指定, 不传用默认值")
     @PostMapping("/upload")
-    public Result<RagUploadVO> upload(@RequestParam("file") MultipartFile file,
-                                      @RequestParam(value = "splitterType", required = false) String splitterType,
-                                      @RequestParam(value = "segmentSize", required = false) Integer segmentSize,
-                                      @RequestParam(value = "overlap", required = false) Integer overlap,
-                                      @RequestParam(value = "pattern", required = false) String pattern)
+    public Result<RagUploadVO> upload(
+            @Parameter(description = "知识文档文件(.pdf/.txt/.md)", required = true)
+            @RequestParam("file") MultipartFile file,
+            @Parameter(description = "切分方式, 见 GET /api/rag/splitters", example = "PARAGRAPH")
+            @RequestParam(value = "splitterType", required = false) String splitterType,
+            @Parameter(description = "片段大小(字符数)", example = "500")
+            @RequestParam(value = "segmentSize", required = false) Integer segmentSize,
+            @Parameter(description = "相邻片段重叠字符数", example = "80")
+            @RequestParam(value = "overlap", required = false) Integer overlap,
+            @Parameter(description = "自定义切分正则(仅 REGEX 方式需要)")
+            @RequestParam(value = "pattern", required = false) String pattern)
             throws Exception {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请选择要上传的文件");
@@ -73,6 +86,7 @@ public class RagController {
     /**
      * 文档列表(文件列表页数据源)
      */
+    @Operation(summary = "文档列表", description = "按上传时间倒序, 供前端文件列表展示")
     @GetMapping("/documents")
     public Result<List<RagDocumentVO>> documents() {
         return Result.ok(ragService.listDocuments());
@@ -81,8 +95,11 @@ public class RagController {
     /**
      * 删除单个文档(同时删除该文件在向量库中的全部片段)
      */
+    @Operation(summary = "删除单个文档", description = "同时删除该文件在向量库中的全部片段")
     @DeleteMapping("/documents/{id}")
-    public Result<Void> deleteDocument(@PathVariable("id") Long id) {
+    public Result<Void> deleteDocument(
+            @Parameter(description = "文档id", required = true, example = "1")
+            @PathVariable("id") Long id) {
         ragService.deleteDocument(id);
         return Result.ok();
     }
@@ -90,6 +107,7 @@ public class RagController {
     /**
      * 知识库问答(阻塞式, 整段返回 AI 回答)
      */
+    @Operation(summary = "知识库问答", description = "阻塞式, 先向量检索相关知识片段再由千问生成回答, 整段返回")
     @PostMapping("/chat")
     public Result<String> chat(@RequestBody @Valid RagChatRequest request) {
         return Result.ok(ragService.answer(request.getQuestion()));
@@ -98,6 +116,7 @@ public class RagController {
     /**
      * 当前知识库片段数
      */
+    @Operation(summary = "当前知识库片段数", description = "向量库中所有知识片段的总数")
     @GetMapping("/size")
     public Result<Long> size() {
         return Result.ok(ragService.size());
@@ -106,6 +125,7 @@ public class RagController {
     /**
      * 可选的切分方式列表(上传时下拉框数据源, 含默认参数与正则填写提示)
      */
+    @Operation(summary = "切分方式列表", description = "上传文档时下拉框数据源, 含默认参数与正则填写提示")
     @GetMapping("/splitters")
     public Result<List<RagSplitterVO>> splitters() {
         return Result.ok(ragService.listSplitters());

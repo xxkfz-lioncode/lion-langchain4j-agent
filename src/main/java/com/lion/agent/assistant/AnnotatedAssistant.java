@@ -1,4 +1,4 @@
-package com.lion.agent.service;
+package com.lion.agent.assistant;
 
 import com.lion.agent.memory.UserChatMemoryProvider;
 import com.lion.agent.tools.DateTools;
@@ -29,9 +29,9 @@ import dev.langchain4j.service.spring.AiServiceWiringMode;
         streamingChatModel = "openAiStreamingChatModel",
         chatMemoryProvider = "userChatMemoryProvider",
         // 多个工具直接在数组中用逗号隔开，传入对应的 Bean 名称
-        tools = {"dateTools", "weatherTools"}
+        tools = {"dateTools","weatherTools"}
 )
-public interface AgentAssistant {
+public interface AnnotatedAssistant {
 
     /**
      * 阻塞对话: 等千问整段生成完再返回

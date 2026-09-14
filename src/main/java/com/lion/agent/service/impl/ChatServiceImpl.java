@@ -1,9 +1,9 @@
 package com.lion.agent.service.impl;
 
+import com.lion.agent.assistant.AnnotatedAssistant;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.pojo.vo.MessageVO;
 import com.lion.agent.memory.UserChatMemoryProvider;
-import com.lion.agent.service.AgentAssistant;
 import com.lion.agent.service.ChatService;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -22,7 +22,7 @@ import java.util.List;
  * 对话服务实现(基于 LangChain4j @AiService 注解式智能助手)
  * <p>
  * 说明:
- * 1. {@link AgentAssistant} 接口标注了 @AiService, 由 langchain4j-spring-boot-starter
+ * 1. {@link AnnotatedAssistant} 接口标注了 @AiService, 由 langchain4j-spring-boot-starter
  *    自动扫描并生成代理 Bean(内部使用 AiServices 完成 模型 + 记忆 + 工具 的装配);
  * 2. 会话记忆由 {@link UserChatMemoryProvider} 按 memoryId(登录用户) 隔离,
  *    保留最近 20 条消息作为上下文, 底层持久化到 chat_message 表(MySQL),
@@ -31,11 +31,11 @@ import java.util.List;
 @Service
 public class ChatServiceImpl implements ChatService {
 
-    private final AgentAssistant assistant;
+    private final AnnotatedAssistant assistant;
     private final UserChatMemoryProvider memoryProvider;
     private final ChatMemoryStore chatMemoryStore;
 
-    public ChatServiceImpl(AgentAssistant assistant,
+    public ChatServiceImpl(AnnotatedAssistant assistant,
                            UserChatMemoryProvider memoryProvider,
                            ChatMemoryStore chatMemoryStore) {
         this.assistant = assistant;

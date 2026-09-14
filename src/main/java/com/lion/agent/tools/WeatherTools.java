@@ -2,6 +2,7 @@ package com.lion.agent.tools;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolMemoryId;
 import org.springframework.stereotype.Component;
 
 /**
@@ -27,7 +28,7 @@ public class WeatherTools {
      * @return 天气描述文本, 直接供大模型组织回答
      */
     @Tool("查询指定城市的今日天气(模拟数据)")
-    public String getTodayWeather(@P("城市名称, 如: 北京") String city) {
+    public String getTodayWeather(@ToolMemoryId String memoryId, @P("城市名称, 如: 北京") String city) {
         if (city == null || city.isBlank()) {
             return "未提供城市名, 请告诉我您想查询哪个城市的天气。";
         }

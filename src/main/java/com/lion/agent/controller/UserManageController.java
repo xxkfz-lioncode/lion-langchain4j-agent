@@ -12,6 +12,9 @@ import com.lion.agent.pojo.dto.UserStatusRequest;
 import com.lion.agent.pojo.dto.UserUpdateRequest;
 import com.lion.agent.pojo.dto.UserVO;
 import com.lion.agent.service.UserService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>
  * 安全约束: 删除 / 禁用当前登录账号会被拒绝。
  */
+@Tag(name = "用户管理", description = "列表 / 新增 / 编辑 / 删除 / 启用禁用 / 重置密码(仅 admin 角色可访问)")
 @SaCheckRole("admin")
 @RestController
 @RequestMapping("/api/user")
@@ -42,12 +46,14 @@ public class UserManageController {
     }
 
     /** 用户分页列表(支持用户名/昵称模糊搜索) */
+    @Operation(summary = "用户分页列表", description = "支持用户名/昵称模糊搜索")
     @GetMapping("/page")
     public Result<PageResult<UserVO>> page(UserPageQuery query) {
         return Result.ok(userService.page(query));
     }
 
     /** 新增用户 */
+    @Operation(summary = "新增用户")
     @PostMapping
     public Result<Void> create(@RequestBody @Valid UserCreateRequest request) {
         userService.create(request);
@@ -55,16 +61,22 @@ public class UserManageController {
     }
 
     /** 编辑用户(用户名/昵称/头像) */
+    @Operation(summary = "编辑用户", description = "用户名 / 昵称 / 头像")
     @PutMapping("/{id}")
-    public Result<Void> update(@PathVariable("id") Long id,
-                               @RequestBody @Valid UserUpdateRequest request) {
+    public Result<Void> update(
+            @Parameter(description = "用户id", required = true, example = "2")
+            @PathVariable("id") Long id,
+            @RequestBody @Valid UserUpdateRequest request) {
         userService.update(id, request);
         return Result.ok();
     }
 
     /** 删除用户(不能删除自己) */
+    @Operation(summary = "删除用户", description = "不能删除当前登录账号")
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable("id") Long id) {
+    public Result<Void> delete(
+            @Parameter(description = "用户id", required = true, example = "2")
+            @PathVariable("id") Long id) {
         if (id.equals(currentUserId())) {
             throw new BusinessException("不能删除当前登录账号");
         }
@@ -73,9 +85,12 @@ public class UserManageController {
     }
 
     /** 启用/禁用用户(不能禁用自己) */
+    @Operation(summary = "启用/禁用用户", description = "status: 1 启用 / 0 禁用; 不能禁用当前登录账号")
     @PutMapping("/{id}/status")
-    public Result<Void> updateStatus(@PathVariable("id") Long id,
-                                     @RequestBody @Valid UserStatusRequest request) {
+    public Result<Void> updateStatus(
+            @Parameter(description = "用户id", required = true, example = "2")
+            @PathVariable("id") Long id,
+            @RequestBody @Valid UserStatusRequest request) {
         if (request.getStatus() != null && request.getStatus() == 0 && id.equals(currentUserId())) {
             throw new BusinessException("不能禁用当前登录账号");
         }
@@ -84,9 +99,12 @@ public class UserManageController {
     }
 
     /** 重置密码 */
+    @Operation(summary = "重置密码")
     @PutMapping("/{id}/password")
-    public Result<Void> resetPassword(@PathVariable("id") Long id,
-                                      @RequestBody @Valid UserPasswordRequest request) {
+    public Result<Void> resetPassword(
+            @Parameter(description = "用户id", required = true, example = "2")
+            @PathVariable("id") Long id,
+            @RequestBody @Valid UserPasswordRequest request) {
         userService.resetPassword(id, request.getPassword());
         return Result.ok();
     }

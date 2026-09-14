@@ -54,9 +54,10 @@ langchain4j:
       model-name: ${QWEN_MODEL_NAME:qwen-plus}
       temperature: 0.7
       max-tokens: 2048
+      # 日志记录
       log-requests: true
       log-responses: true
-    # 流式对话模型: 独立自动装配(openAiStreamingChatModel), 不配则 AgentAssistant.chatStream 报 streamingChatModel cannot be null
+    # 流式对话模型: 独立自动装配(openAiStreamingChatModel), 不配则 AnnotatedAssistant.chatStream 报 streamingChatModel cannot be null
     streaming-chat-model:
       api-key: ${QWEN_API_KEY:}
       base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
