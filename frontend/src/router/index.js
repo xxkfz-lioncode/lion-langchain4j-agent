@@ -40,24 +40,10 @@ const routes = [
         meta: { title: '用户管理', requiresAuth: true }
       },
       {
-        path: 'system/menu',
-        name: 'system-menu',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: {
-          title: '菜单管理',
-          description: '该模块用于配置系统导航菜单, 当前功能开发中。'
-        },
-        meta: { title: '菜单管理', parentTitle: '系统管理', requiresAuth: true }
-      },
-      {
-        path: 'system/setting',
-        name: 'system-setting',
-        component: () => import('@/views/PlaceholderView.vue'),
-        props: {
-          title: '参数设置',
-          description: '该模块用于配置系统运行参数, 当前功能开发中。'
-        },
-        meta: { title: '参数设置', parentTitle: '系统管理', requiresAuth: true }
+        path: 'api-doc',
+        name: 'api-doc',
+        component: () => import('@/views/ApiDocView.vue'),
+        meta: { title: '接口文档', requiresAuth: true }
       }
     ]
   },

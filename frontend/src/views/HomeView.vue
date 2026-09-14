@@ -2,12 +2,8 @@
   <div class="home-page">
     <div class="home-hero">
       <h2>该页面为 Lion Agent 系统功能演示页面</h2>
-      <p>
-        多数据源: 在「系统管理 - 参数设置」中修改数据源状态, 可以切换不同数据库的数据;
-      </p>
-      <p>
-        数据权限: 分别在不同部门已经设置不同的数据权限, 可以登录不同的账号查看不同的数据;
-      </p>
+      <p>对话助手: 基于 LangChain4j + 千问大模型, 支持多轮记忆、工具调用与流式输出。</p>
+      <p>RAG 知识库: 上传文档自动切分、向量化入库, 对话时检索增强作答。</p>
     </div>
 
     <div class="home-stats">
@@ -41,8 +37,8 @@
           在「用户管理」中可以查看当前登录账号信息。
         </li>
         <li>
-          <el-icon><Setting /></el-icon>
-          「系统管理」用于维护系统菜单与基础参数。
+          <el-icon><Document /></el-icon>
+          点击「接口文档」可直接在页面内查看并在线调试后端所有接口。
         </li>
       </ul>
     </div>
@@ -51,7 +47,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ChatDotRound, User, Setting } from '@element-plus/icons-vue'
+import { ChatDotRound, User, Document } from '@element-plus/icons-vue'
 
 const stats = ref({ messages: 0, users: 1, chats: 0, online: 1 })
 
