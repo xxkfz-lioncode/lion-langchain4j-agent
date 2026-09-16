@@ -6,6 +6,7 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.rag.content.retriever.ContentRetriever;
 import dev.langchain4j.service.AiServices;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
@@ -59,6 +60,7 @@ public class ManualAssistant {
     private final ChatMemoryProvider chatMemoryProvider;
     private final ProgrammaticToolsFactory programmaticToolsFactory;
     private final SkillsFactory skillsFactory;
+    private final ContentRetriever contentRetriever;
 
     /** 手工装配出来的助手代理, 等价于 @AiService 生成的 Bean */
     private ProgrammaticAssistant assistant;
@@ -67,12 +69,14 @@ public class ManualAssistant {
                            @Qualifier("openAiStreamingChatModel") StreamingChatModel streamingChatModel,
                            ChatMemoryProvider chatMemoryProvider,
                            ProgrammaticToolsFactory programmaticToolsFactory,
-                           SkillsFactory skillsFactory) {
+                           SkillsFactory skillsFactory,
+                           ContentRetriever contentRetriever) {
         this.chatModel = chatModel;
         this.streamingChatModel = streamingChatModel;
         this.chatMemoryProvider = chatMemoryProvider;
         this.programmaticToolsFactory = programmaticToolsFactory;
         this.skillsFactory = skillsFactory;
+        this.contentRetriever = contentRetriever;
     }
 
     /**
@@ -95,10 +99,11 @@ public class ManualAssistant {
                 .chatMemoryProvider(chatMemoryProvider)  // 按 memoryId(登录用户)隔离多轮上下文
                 .tools(tools)                            // 编程式注册工具: spec -> executor
                 .toolProvider(skills.toolProvider())     // 关键：注入 Skill 的动态工具提供者
+                 // 启用RAG
+                .contentRetriever(contentRetriever)
                 .build();
 
-        log.info("[编程式助手] 装配完成, 已注册静态工具: {}",
-                tools.keySet().stream().map(ToolSpecification::name).toList());
+        log.info("[编程式助手] 装配完成, 已注册静态工具: {}", tools.keySet().stream().map(ToolSpecification::name).toList());
     }
 
     /** 阻塞对话(对外入口, 供 Service/Controller 调用) */

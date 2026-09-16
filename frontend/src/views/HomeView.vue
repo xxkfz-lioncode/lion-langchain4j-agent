@@ -4,6 +4,7 @@
       <h2>该页面为 Lion Agent 系统功能演示页面</h2>
       <p>对话助手: 基于 LangChain4j + 千问大模型, 支持多轮记忆、工具调用与流式输出。</p>
       <p>RAG 知识库: 上传文档自动切分、向量化入库, 对话时检索增强作答。</p>
+      <p>情感分析: 基于 LLM + Embedding 两种分类器, 提供客户反馈、社交媒体、聊天机器人三个业务场景的一键分析。</p>
     </div>
 
     <div class="home-stats">
@@ -40,6 +41,10 @@
           <el-icon><Document /></el-icon>
           点击「接口文档」可直接在页面内查看并在线调试后端所有接口。
         </li>
+        <li>
+          <el-icon><MagicStick /></el-icon>
+          点击「情感分析」可对批量评论、社媒文本、聊天消息进行情感打标与回复建议。
+        </li>
       </ul>
     </div>
   </div>
@@ -47,7 +52,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ChatDotRound, User, Document } from '@element-plus/icons-vue'
+import { ChatDotRound, User, Document, MagicStick } from '@element-plus/icons-vue'
 
 const stats = ref({ messages: 0, users: 1, chats: 0, online: 1 })
 

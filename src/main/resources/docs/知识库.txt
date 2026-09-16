@@ -1,0 +1,26 @@
+在 Spring AI Alibaba 中，一次标准的 AI 对话请求会经历一条清晰的处理链路，从客户端发起请求到最终返回结果，其完整时序如下：
+
+1. 业务入口 (ChatClient)
+开发者通过 ChatClient 发起对话请求。它是业务代码中最常见的调用入口，提供链式 API，负责组织和封装请求参数。
+
+2. 前置增强与拦截 (Advisor Chain)
+请求首先会经过 Advisor 链进行统一预处理。这些切面组件可以执行多种通用逻辑，例如：
+拼接系统提示词 (System Prompt)
+参数校验与权限过滤
+注入对话记忆 (Memory)
+
+3. RAG 检索增强 (可选)
+如果应用配置了知识库，Advisor 会根据用户问题从向量数据库 (VectorStore) 中检索相关的私有文档片段，并将其与用户问题、历史会话记忆融合，组装成完整的上下文。
+
+4. 模型抽象层调用 (ChatModel)
+组装好的完整请求对象 (Prompt) 会被传递给 ChatModel。这一层是统一的模型抽象，屏蔽了底层不同大模型（如阿里通义千问、OpenAI 等）的 API 差异。
+
+5. 外部模型服务与 Function Calling
+ChatModel 将请求转化为 HTTP 请求，发送给底层大模型 API。如果模型在推理过程中判断需要调用外部工具或业务方法，会自动触发 Function Calling 机制，执行对应的 Java 方法，并将执行结果回传给模型继续推理。
+
+6. 后置处理与结果返回 (ChatResponse)
+大模型生成最终内容后，结果 (ChatResponse) 会原路返回。在返回前，可能会经过 Advisor 的后置处理（如内容校验、抑制幻觉、过滤违规内容等），最终将文本结果返回给前端，并可选地持久化本轮对话上下文以支持多轮对话。
+
+简而言之，一次请求的核心流转路径为：Controller -> ChatClient -> Advisor Chain -> ChatModel -> 大模型 API -> ChatResponse。
+
+要不要我帮你梳理一下多智能体协作（比如 Supervisor + Worker 模式）的时序流程？

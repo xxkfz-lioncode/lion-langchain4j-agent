@@ -21,29 +21,44 @@ const routes = [
         component: () => import('@/views/HomeView.vue'),
         meta: { title: '首页', requiresAuth: true }
       },
+      // 分类一: 对话与知识
       {
         path: 'chat',
         name: 'chat',
         component: () => import('@/views/ChatView.vue'),
-        meta: { title: '对话助手', requiresAuth: true }
+        meta: { title: '对话助手', parentTitle: '对话与知识', requiresAuth: true }
       },
       {
         path: 'rag',
         name: 'rag',
         component: () => import('@/views/RagView.vue'),
-        meta: { title: 'RAG 知识库', requiresAuth: true }
+        meta: { title: 'RAG 知识库', parentTitle: '对话与知识', requiresAuth: true }
       },
+      // 分类二: 智能分析
+      {
+        path: 'sentiment',
+        name: 'sentiment',
+        component: () => import('@/views/SentimentView.vue'),
+        meta: { title: '情感分析', parentTitle: '智能分析', requiresAuth: true }
+      },
+      {
+        path: 'structured',
+        name: 'structured',
+        component: () => import('@/views/StructuredOutputView.vue'),
+        meta: { title: '结构化输出', parentTitle: '智能分析', requiresAuth: true }
+      },
+      // 分类三: 系统管理
       {
         path: 'user',
         name: 'user',
         component: () => import('@/views/UserView.vue'),
-        meta: { title: '用户管理', requiresAuth: true }
+        meta: { title: '用户管理', parentTitle: '系统管理', requiresAuth: true }
       },
       {
         path: 'api-doc',
         name: 'api-doc',
         component: () => import('@/views/ApiDocView.vue'),
-        meta: { title: '接口文档', requiresAuth: true }
+        meta: { title: '接口文档', parentTitle: '系统管理', requiresAuth: true }
       }
     ]
   },

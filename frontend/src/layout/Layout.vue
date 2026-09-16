@@ -26,6 +26,7 @@
           :default-active="activeMenu"
           :collapse="collapsed"
           :collapse-transition="false"
+          unique-opened
           router
           class="app-menu"
         >
@@ -33,22 +34,54 @@
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
           </el-menu-item>
-          <el-menu-item index="/chat">
-            <el-icon><ChatDotRound /></el-icon>
-            <span>对话助手</span>
-          </el-menu-item>
-          <el-menu-item index="/rag">
-            <el-icon><Collection /></el-icon>
-            <span>RAG 知识库</span>
-          </el-menu-item>
-          <el-menu-item v-if="auth.isAdmin" index="/user">
-            <el-icon><User /></el-icon>
-            <span>用户管理</span>
-          </el-menu-item>
-          <el-menu-item index="/api-doc">
-            <el-icon><Document /></el-icon>
-            <span>接口文档</span>
-          </el-menu-item>
+
+          <!-- 分类一: 对话与知识 -->
+          <el-sub-menu index="group-chat">
+            <template #title>
+              <el-icon><ChatLineSquare /></el-icon>
+              <span>对话与知识</span>
+            </template>
+            <el-menu-item index="/chat">
+              <el-icon><ChatDotRound /></el-icon>
+              <span>对话助手</span>
+            </el-menu-item>
+            <el-menu-item index="/rag">
+              <el-icon><Collection /></el-icon>
+              <span>RAG 知识库</span>
+            </el-menu-item>
+          </el-sub-menu>
+
+          <!-- 分类二: 智能分析 -->
+          <el-sub-menu index="group-analysis">
+            <template #title>
+              <el-icon><DataLine /></el-icon>
+              <span>智能分析</span>
+            </template>
+            <el-menu-item index="/sentiment">
+              <el-icon><MagicStick /></el-icon>
+              <span>情感分析</span>
+            </el-menu-item>
+            <el-menu-item index="/structured">
+              <el-icon><DataAnalysis /></el-icon>
+              <span>结构化输出</span>
+            </el-menu-item>
+          </el-sub-menu>
+
+          <!-- 分类三: 系统管理 -->
+          <el-sub-menu index="group-system">
+            <template #title>
+              <el-icon><Setting /></el-icon>
+              <span>系统管理</span>
+            </template>
+            <el-menu-item v-if="auth.isAdmin" index="/user">
+              <el-icon><User /></el-icon>
+              <span>用户管理</span>
+            </el-menu-item>
+            <el-menu-item index="/api-doc">
+              <el-icon><Document /></el-icon>
+              <span>接口文档</span>
+            </el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </el-scrollbar>
     </aside>
@@ -129,8 +162,13 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   HomeFilled,
+  ChatLineSquare,
   ChatDotRound,
   Collection,
+  DataLine,
+  MagicStick,
+  DataAnalysis,
+  Setting,
   User,
   Document,
   Expand,
@@ -295,6 +333,22 @@ onMounted(async () => {
 ::deep(.app-menu .el-menu-item:hover),
 ::deep(.app-menu .el-sub-menu__title:hover) {
   background: #f5f7fa;
+}
+
+/* 分组标题: 字号略小、颜色略淡, 与叶子菜单区分层级 */
+::deep(.app-menu .el-sub-menu__title) {
+  color: #606266;
+  font-weight: 500;
+}
+
+/* 分组内有激活项时, 分组标题也高亮, 便于定位 */
+::deep(.app-menu .el-sub-menu.is-active > .el-sub-menu__title) {
+  color: #2d4a8f;
+}
+
+/* 次级菜单项缩进后左侧加一条细线, 强化层级关系 */
+::deep(.app-menu .el-menu .el-menu-item) {
+  min-width: auto;
 }
 
 /* 右侧主区域 */
