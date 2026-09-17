@@ -59,6 +59,13 @@ const routes = [
         name: 'api-doc',
         component: () => import('@/views/ApiDocView.vue'),
         meta: { title: '接口文档', parentTitle: '系统管理', requiresAuth: true }
+      },
+      // 分类四: 工具与协议
+      {
+        path: 'mcp',
+        name: 'mcp',
+        component: () => import('@/views/McpView.vue'),
+        meta: { title: 'MCP 调试', parentTitle: '工具与协议', requiresAuth: true }
       }
     ]
   },

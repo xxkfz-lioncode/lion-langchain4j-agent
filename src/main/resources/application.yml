@@ -162,3 +162,62 @@ resilience4j:
 # 天气工具演示配置(仅学习演示用)：0=不注入故障，1=每次调用必失败，便于观察熔断与降级
 weather:
   mock-failure-rate: 1
+
+
+# MCP 配置(参考示例): 通过 Streamable HTTP 或 stdio 接入 MCP 服务器,
+# 工具会与 Skills 一起合并到 ManualAssistant 的 toolProviders(...) 里, 模型可同时调用。
+#
+# 启用条件: lion.mcp.enabled=false 时整体短路;
+# 二级总闸按 transport 模式区分:
+#   - http 模式(默认): 需要 lion.mcp.url 非空
+#   - stdio 模式:       需要 lion.mcp.command 非空
+# 两种模式互斥装配(同一时间只有一个 McpTransport Bean 存在)。
+#
+# 当前: 已切到 stdio 模式, 接 @modelcontextprotocol/server-filesystem 演示 server,
+#       把项目根目录 / AI 工作目录暴露给 LLM, 让模型可以直接读 / 列目录 / 搜文件。
+lion:
+  mcp:
+    # 总开关; 默认开启, 关闭后整套 MCP 接入不生效, ManualAssistant 自动降级到只用 Skills
+    enabled: true
+    # 传输方式: http(Streamable HTTP) 或 stdio(本地子进程)
+    # 已切到 stdio, url / headers 字段被忽略
+    transport: stdio
+    # --- http 模式 (当前未使用) ---
+    # 远端 MCP 服务器入口 URL。transport=http 时必填; stdio 模式忽略
+    url: http://localhost:8083/mcp
+
+    # 透传给 MCP 服务器的 HTTP 头(stdio 模式忽略),每次请求都带上。
+    # 用于标识客户端身份 / 鉴权 / 自定义路由等。
+    headers:
+      X-Client: lion-mcp-client
+      User-Agent: lion-mcp-client/1.0
+    # 鉴权场景再追加(示例):
+    #   Authorization: Bearer xxxxxxxx
+    # --- stdio 模式 (当前生效) ---
+    # 启动本地 MCP Server 子进程的完整命令(可执行程序 + 参数列表)。
+    # 第一个元素是可执行程序, 后续是参数。
+    #
+    # 当前: 官方 filesystem server, 把项目根目录 + 一个测试目录暴露给 LLM。
+    # server-filesystem 接 1 个或多个目录参数, 每个都是允许访问的根。
+    # Windows 下建议把 npx 写成 npx.cmd, 避免子进程找不到。
+    command:
+      - npx.cmd
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - "E:/xxkfz-project/lion-langchain4j-agent"
+    # 透传给子进程的环境变量(可选)
+    # environment:
+    #   FOO: bar
+    # McpClient.key(), 多 MCP 客户端并存时用于消歧; 单实例可保持默认
+    client-key: lion-mcp-demo
+    # 工具白名单; 留空把服务端列出的工具全部暴露给 LLM
+    # filesystem server 默认暴露: read_file / write_file / list_directory /
+    #   list_allowed_directories / search_files / get_file_info / create_directory /
+    #   move_file / delete_file
+    # 想限定 AI 只能"看不能改"时, 可以改成只读类:
+    #   - read_file
+    #   - list_directory
+    #   - list_allowed_directories
+    #   - search_files
+    #   - get_file_info
+    filter-tool-names:

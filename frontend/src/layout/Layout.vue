@@ -82,6 +82,18 @@
               <span>接口文档</span>
             </el-menu-item>
           </el-sub-menu>
+
+          <!-- 分类四: 工具与协议 -->
+          <el-sub-menu index="group-tooling">
+            <template #title>
+              <el-icon><Connection /></el-icon>
+              <span>工具与协议</span>
+            </template>
+            <el-menu-item index="/mcp">
+              <el-icon><Tools /></el-icon>
+              <span>MCP 调试</span>
+            </el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </el-scrollbar>
     </aside>
@@ -176,7 +188,9 @@ import {
   Refresh,
   FullScreen,
   ArrowDown,
-  SwitchButton
+  SwitchButton,
+  Connection,
+  Tools
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { getInfo, logout } from '@/api/auth'
