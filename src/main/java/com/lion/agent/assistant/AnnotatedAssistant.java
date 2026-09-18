@@ -1,11 +1,15 @@
 package com.lion.agent.assistant;
 
+import com.lion.agent.guardrail.LoggingInputGuardrail;
+import com.lion.agent.guardrail.LoggingOutputGuardrail;
 import com.lion.agent.memory.UserChatMemoryProvider;
 import com.lion.agent.tools.DateTools;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.TokenStream;
 import dev.langchain4j.service.UserMessage;
+import dev.langchain4j.service.guardrail.InputGuardrails;
+import dev.langchain4j.service.guardrail.OutputGuardrails;
 import dev.langchain4j.service.spring.AiService;
 import dev.langchain4j.service.spring.AiServiceWiringMode;
 
@@ -31,6 +35,9 @@ import dev.langchain4j.service.spring.AiServiceWiringMode;
         // 多个工具直接在数组中用逗号隔开，传入对应的 Bean 名称
         tools = {"dateTools","weatherTools"}
 )
+// 注解式护栏: 仅传 Class(框架用反射 new, 不能依赖 Spring Bean), 触发时机见对应类的 javadoc
+@InputGuardrails({LoggingInputGuardrail.class})
+@OutputGuardrails({LoggingOutputGuardrail.class})
 public interface AnnotatedAssistant {
 
     /**

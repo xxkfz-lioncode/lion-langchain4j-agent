@@ -59,7 +59,7 @@ import java.util.Locale;
  *   见 application.yml 的 langchain4j.milvus.* 与 {@code rag/config/RagVectorStoreConfig});
  * - 入库采用"追加式": 多个文档向量共存, 每个片段携带 docId/fileName 元数据(随片段存入 Milvus 的
  *   metadata JSON 字段), 支持文档列表持久化(rag_document)与按文件删除(removeAll(Filter));
- * - 上传的原始文件保存到 upload 目录(可配 rag.upload-dir, 文件名加 docId 前缀防重名),
+ * - 上传的原始文件保存到 upload 目录(可配 lion.rag.upload-dir, 文件名加 docId 前缀防重名),
  *   路径记录在 rag_document.file_path, 删除文档时一并删除。
  */
 @Slf4j
@@ -85,14 +85,14 @@ public class RagServiceImpl implements RagService {
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingStoreContentRetriever retriever;
     private final RagDocumentMapper ragDocumentMapper;
-    /** 上传文件保存目录(相对运行目录, 见 application.yml 的 rag.upload-dir) */
+    /** 上传文件保存目录(相对运行目录, 见 application.yml 的 lion.rag.upload-dir) */
     private final String uploadDir;
 
     public RagServiceImpl(ChatModel chatModel, EmbeddingModel embeddingModel,
                           EmbeddingStore<TextSegment> embeddingStore,
                           DocumentSplitterFactory splitterFactory,
                           RagDocumentMapper ragDocumentMapper,
-                          @Value("${rag.upload-dir:upload}") String uploadDir) {
+                          @Value("${lion.rag.upload-dir:upload}") String uploadDir) {
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;
         // 向量库由 milvus starter 自动装配(MilvusEmbeddingStore), 经 rag/config/RagVectorStoreConfig

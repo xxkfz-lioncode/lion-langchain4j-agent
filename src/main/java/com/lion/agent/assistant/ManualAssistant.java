@@ -1,8 +1,13 @@
 package com.lion.agent.assistant;
 
+import com.lion.agent.guardrail.GuardrailA;
+import com.lion.agent.guardrail.GuardrailB;
+import com.lion.agent.guardrail.LoggingInputGuardrail;
+import com.lion.agent.guardrail.LoggingOutputGuardrail;
 import com.lion.agent.skills.SkillsFactory;
 import com.lion.agent.tools.programmatic.ProgrammaticToolsFactory;
 import dev.langchain4j.agent.tool.ToolSpecification;
+import dev.langchain4j.guardrail.config.OutputGuardrailsConfig;
 import dev.langchain4j.mcp.McpToolProvider;
 import dev.langchain4j.memory.chat.ChatMemoryProvider;
 import dev.langchain4j.model.chat.ChatModel;
@@ -71,6 +76,7 @@ public class ManualAssistant {
     private final ChatMemoryProvider chatMemoryProvider;
     private final ProgrammaticToolsFactory programmaticToolsFactory;
     private final SkillsFactory skillsFactory;
+    /** RAG 检索器(可空 —— 由 RagConfig 上的 @ConditionalOnProperty(lion.rag.enabled=true) 控制是否装配) */
     private final ContentRetriever contentRetriever;
     /**
      * MCP 工具提供者(可空 —— 由 {@code McpClientConfig} 上的
@@ -87,6 +93,7 @@ public class ManualAssistant {
                            ChatMemoryProvider chatMemoryProvider,
                            ProgrammaticToolsFactory programmaticToolsFactory,
                            SkillsFactory skillsFactory,
+                           @org.springframework.beans.factory.annotation.Autowired(required = false)
                            ContentRetriever contentRetriever,
                            @org.springframework.beans.factory.annotation.Autowired(required = false)
                            McpToolProvider mcpToolProvider) {
@@ -117,9 +124,14 @@ public class ManualAssistant {
                 .chatModel(chatModel)                    // 阻塞对话用
                 .streamingChatModel(streamingChatModel)  // chatStream 用
                 .chatMemoryProvider(chatMemoryProvider)  // 按 memoryId(登录用户)隔离多轮上下文
+                 .contentRetriever(contentRetriever) // RAG 检索增强
                 .tools(tools)                            // 编程式注册工具: spec -> executor
-                // 启用RAG
-                .contentRetriever(contentRetriever);
+                // 输入护栏(按声明顺序串行执行: A → B → Logging; 前面 fatal 会短路后面, 见 GuardrailA)
+                .inputGuardrails(new GuardrailB(), new GuardrailA(), new LoggingInputGuardrail())
+                // 输出护栏(工具调用完成后, 默认仅 trace 日志, reprompt/fatal 由 LoggingOutputGuardrail.validate() 决定)
+                .outputGuardrails(new LoggingOutputGuardrail())
+                // 失败时最多自动重答 1 次 (maxRetries=2 = 总共 2 次尝试, 第 2 次还失败就抛异常)
+                .outputGuardrailsConfig(OutputGuardrailsConfig.builder().maxRetries(2).build());
 
         // 合并 Skills + MCP 两个动态 ToolProvider
         // - toolProviders(...) 是变参, 内部把多个 Provider 的 provideTools 结果拼成一组工具

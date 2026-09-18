@@ -34,6 +34,18 @@ const routes = [
         component: () => import('@/views/RagView.vue'),
         meta: { title: 'RAG 知识库', parentTitle: '对话与知识', requiresAuth: true }
       },
+      {
+        path: 'vector',
+        name: 'vector',
+        component: () => import('@/views/VectorView.vue'),
+        meta: { title: '向量库查询', parentTitle: '对话与知识', requiresAuth: true }
+      },
+      {
+        path: 'ai-services',
+        name: 'ai-services',
+        component: () => import('@/views/AiServicesView.vue'),
+        meta: { title: 'AI Services 指南', requiresAuth: true }
+      },
       // 分类二: 智能分析
       {
         path: 'sentiment',

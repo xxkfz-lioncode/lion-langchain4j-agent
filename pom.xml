@@ -177,25 +177,24 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
-        <!-- LangChain4j Skills 扩展: @Skill 注解 + 基于 markdown 的技能加载机制,
-             把一组结构化技能说明文档当作工具源, 让 LLM 按需加载对应的"技能说明"作为上下文。
-             本项目用 Skills + MCP 合并到 ManualAssistant.toolProviders(...) 里,
-             让模型在普通工具调用之外还能按需"读 skill 文档"获取操作指引。
-             1.20.0-beta30 与下方 langchain4j-mcp 同步配套 -->
+        <!-- Skills: 把 markdown "技能说明文档"当工具源, 让 LLM 按需读取作为上下文; 与 MCP 一起注册到 ManualAssistant -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-skills</artifactId>
             <version>1.20.0-beta30</version>
         </dependency>
-        <!-- LangChain4j MCP 客户端: McpTransport + McpClient + McpToolProvider 三件套,
-             支持两种传输方式 - Streamable HTTP(2025-06-18 协议主推, 默认)与本地 stdio 子进程。
-             本项目两种都实现了(McpClientConfig.mcpTransport / mcpStdioTransport 二选一),
-             装配后的 McpToolProvider 通过 ManualAssistant 暴露给 LLM 调用。
-             1.20.0-beta30 与上方 langchain4j-skills 同步配套 -->
+        <!-- MCP: 让 LLM 调用外部工具(HTTP / stdio 两种传输, McpClientConfig 二选一), 通过 ManualAssistant 暴露给模型 -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-mcp</artifactId>
             <version>1.20.0-beta30</version>
+        </dependency>
+
+        <!-- Guardrails: LLM 调用前后的输入/输出校验(示例见 LoggingInputGuardrail / LoggingOutputGuardrail) -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-guardrails</artifactId>
+            <version>${langchain4j.version}</version>
         </dependency>
     </dependencies>
 

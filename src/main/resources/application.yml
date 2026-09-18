@@ -103,11 +103,6 @@ langchain4j:
     # 未启用鉴权时不要配置 username/password(空串会被当作凭据传给 Milvus 导致认证失败)
 
 
-# 知识库(RAG)上传文件保存目录: 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)
-rag:
-  upload-dir: upload
-
-
 # Actuator 监控端点
 # 不配 exposure 时 Spring Boot 只暴露 health, 访问 /actuator/circuitbreakers 会因为
 # "找不到对应 handler" 被 Spring MVC 当作静态资源处理, 抛 NoResourceFoundException(看起来像 404)
@@ -176,6 +171,15 @@ weather:
 # 当前: 已切到 stdio 模式, 接 @modelcontextprotocol/server-filesystem 演示 server,
 #       把项目根目录 / AI 工作目录暴露给 LLM, 让模型可以直接读 / 列目录 / 搜文件。
 lion:
+  # ---- 知识库(RAG) ----
+  rag:
+    # 上传文件保存目录: 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)
+    upload-dir: upload
+    # 启动时是否把 src/main/resources/docs 下的文档灌入向量库(MilvusEmbeddingStore 追加式写入, 不查重):
+    # false = 默认, 启动只装配检索器, 不重复灌库(Milvus 数据持久化, 灌一次即可);
+    # true  = 临时打开: 改了 docs 里的文档想重新入库, 或删集合后重建时用, 用完记得改回 false,
+    #         否则每次启动都会把同样的片段再追加一遍, 向量库里越积越多。
+    ingest-on-startup: false
   mcp:
     # 总开关; 默认开启, 关闭后整套 MCP 接入不生效, ManualAssistant 自动降级到只用 Skills
     enabled: true

@@ -34,6 +34,10 @@
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
           </el-menu-item>
+          <el-menu-item index="/ai-services">
+            <el-icon><SetUp /></el-icon>
+            <span>AI Services 指南</span>
+          </el-menu-item>
 
           <!-- 分类一: 对话与知识 -->
           <el-sub-menu index="group-chat">
@@ -48,6 +52,10 @@
             <el-menu-item index="/rag">
               <el-icon><Collection /></el-icon>
               <span>RAG 知识库</span>
+            </el-menu-item>
+            <el-menu-item index="/vector">
+              <el-icon><Coin /></el-icon>
+              <span>向量库查询</span>
             </el-menu-item>
           </el-sub-menu>
 
@@ -190,7 +198,9 @@ import {
   ArrowDown,
   SwitchButton,
   Connection,
-  Tools
+  Tools,
+  Coin,
+  SetUp
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { getInfo, logout } from '@/api/auth'
