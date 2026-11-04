@@ -1,6 +1,6 @@
 package com.lion.agent.controller;
 
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.pojo.dto.LoginRequest;
 import com.lion.agent.pojo.dto.LoginResult;
 import com.lion.agent.pojo.dto.RegisterRequest;
@@ -35,9 +35,9 @@ public class AuthController {
      */
     @Operation(summary = "注册新账号", description = "密码 BCrypt 加密存储, 用户名唯一")
     @PostMapping("/register")
-    public Result<Void> register(@RequestBody @Valid RegisterRequest request) {
+    public R<Void> register(@RequestBody @Valid RegisterRequest request) {
         authService.register(request);
-        return Result.ok();
+        return R.ok();
     }
 
     /**
@@ -45,8 +45,8 @@ public class AuthController {
      */
     @Operation(summary = "登录", description = "校验用户名密码, 成功后签发 Sa-Token, 前端后续请求携带 satoken 请求头")
     @PostMapping("/login")
-    public Result<LoginResult> login(@RequestBody @Valid LoginRequest request) {
-        return Result.ok(authService.login(request));
+    public R<LoginResult> login(@RequestBody @Valid LoginRequest request) {
+        return R.ok(authService.login(request));
     }
 
     /**
@@ -54,9 +54,9 @@ public class AuthController {
      */
     @Operation(summary = "登出", description = "销毁当前登录态(需已登录)")
     @PostMapping("/logout")
-    public Result<Void> logout() {
+    public R<Void> logout() {
         authService.logout();
-        return Result.ok();
+        return R.ok();
     }
 
     /**
@@ -64,7 +64,7 @@ public class AuthController {
      */
     @Operation(summary = "当前登录用户信息", description = "返回当前登录用户的 id / 用户名 / 昵称 / 头像 / 角色(需已登录)")
     @GetMapping("/info")
-    public Result<LoginResult> info() {
-        return Result.ok(authService.info());
+    public R<LoginResult> info() {
+        return R.ok(authService.info());
     }
 }

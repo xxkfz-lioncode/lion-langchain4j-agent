@@ -1,7 +1,7 @@
 package com.lion.agent.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.pojo.vo.ConversationVO;
 import com.lion.agent.pojo.vo.MessageVO;
 import com.lion.agent.service.ChatService;
@@ -44,15 +44,15 @@ public class ConversationController {
     /** 当前用户的会话列表(按更新时间倒序) */
     @Operation(summary = "当前用户的会话列表", description = "按更新时间倒序")
     @GetMapping("/conversations")
-    public Result<List<ConversationVO>> conversations() {
-        return Result.ok(conversationService.list(currentUserId()));
+    public R<List<ConversationVO>> conversations() {
+        return R.ok(conversationService.list(currentUserId()));
     }
 
     /** 新建会话(默认标题"新对话") */
     @Operation(summary = "新建会话", description = "默认标题\"新对话\"")
     @PostMapping("/conversations")
-    public Result<ConversationVO> createConversation() {
-        return Result.ok(conversationService.create(currentUserId()));
+    public R<ConversationVO> createConversation() {
+        return R.ok(conversationService.create(currentUserId()));
     }
 
     /**
@@ -60,14 +60,14 @@ public class ConversationController {
      */
     @Operation(summary = "删除会话", description = "仅限本人; 同时清理会话元信息、chat_message 记录及 LangChain4j 记忆")
     @DeleteMapping("/conversations/{id}")
-    public Result<Void> deleteConversation(
+    public R<Void> deleteConversation(
             @Parameter(description = "会话id", required = true, example = "1")
             @PathVariable("id") Long conversationId) {
         Long userId = currentUserId();
         if (conversationService.delete(userId, conversationId)) {
             chatService.clear(buildMemoryId(userId, conversationId));
         }
-        return Result.ok();
+        return R.ok();
     }
 
     // ==================== 历史消息 ====================
@@ -77,10 +77,10 @@ public class ConversationController {
      */
     @Operation(summary = "会话历史消息", description = "过滤系统提示, 按先后顺序返回, 供切换会话时回放")
     @GetMapping("/messages")
-    public Result<List<MessageVO>> messages(
+    public R<List<MessageVO>> messages(
             @Parameter(description = "会话id", required = true, example = "1")
             @RequestParam("conversationId") Long conversationId) {
-        return Result.ok(chatService.listMessages(buildMemoryId(currentUserId(), conversationId)));
+        return R.ok(chatService.listMessages(buildMemoryId(currentUserId(), conversationId)));
     }
 
     /** 当前登录用户id */

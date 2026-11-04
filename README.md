@@ -217,7 +217,7 @@ public SseEmitter stream(@RequestParam("message") String message) {
   `onPartialResponse` / `onComplete` / `onError`，不要混用）；
 - 记得调用 `.start()`，否则请求不会发出；
 - 结束标记：后端推 `data: [DONE]`，前端据此判定一轮回复结束；
-- SSE 无法复用统一的 JSON `Result` 包装，每个事件直接承载文本。
+- SSE 无法复用统一的 JSON `R` 包装，每个事件直接承载文本。
 
 ## 4. 会话记忆：按用户隔离 + MySQL 持久化
 
@@ -311,7 +311,7 @@ function renderMd(text = '') {
 | `streamingChatModel cannot be null` | 流式接口需要 `streaming-chat-model`，只配 `chat-model` 不够，yml 里必须单独配置(见第 2 节) |
 | `log-requests/responses` 无输出 | 日志在 `dev.ai4j.openai4j` 包，不是 `dev.langchain4j`(见第 6 节) |
 | `IllegalArgumentException: response cannot be null`(ChatModelResponseContext) | DashScope(OpenAI 兼容)+ 流式 + 带 tools 时，流结束事件被转成空 response。0.36.2 已知缺陷，见第 9 节 |
-| `No converter for [Result] with preset Content-Type 'text/event-stream'` | SSE 响应里抛异常后，全局异常处理器仍想写 JSON `Result` 导致二次异常；SSE 出错路径不应返回统一 JSON 包装 |
+| `No converter for [Result] with preset Content-Type 'text/event-stream'` | SSE 响应里抛异常后，全局异常处理器仍想写 JSON `R` 导致二次异常；SSE 出错路径不应返回统一 JSON 包装 |
 | Markdown 始终显示 `###`/`**` 原文 | 前端未真正应用 marked 渲染：新增依赖未重启 Vite / v-html 未接入(见第 7 节) |
 
 ## 9. 已知缺陷与升级路线

@@ -4,7 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import com.lion.agent.classification.Sentiment;
 import com.lion.agent.classification.SentimentAnalyzer;
 import com.lion.agent.classification.SentimentEmbeddingClassifier;
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import dev.langchain4j.classification.ClassificationResult;
 import dev.langchain4j.classification.ScoredLabel;
 import io.swagger.v3.oas.annotations.Operation;
@@ -61,31 +61,31 @@ public class SentimentController {
 
     @Operation(summary = "单条情感分类", description = "mode=llm 走 LLM, embedding 走向量相似度, both 返回两种结果")
     @GetMapping("/classify")
-    public Result<Map<String, Object>> classify(
+    public R<Map<String, Object>> classify(
             @Parameter(description = "待分析文本", required = true, example = "东西收到了, 还行")
             @RequestParam("text") String text,
             @Parameter(description = "分类方式", example = "llm")
             @RequestParam(value = "mode", required = false, defaultValue = "llm") String mode) {
         validateText(text);
-        return Result.ok(buildClassifyResult(text, mode));
+        return R.ok(buildClassifyResult(text, mode));
     }
 
     @Operation(summary = "批量情感分类", description = "一次性分析多条文本, 上限 50 条; 返回每条的分类结果")
     @PostMapping("/batch")
-    public Result<List<Map<String, Object>>> batch(@RequestBody BatchRequest body) {
+    public R<List<Map<String, Object>>> batch(@RequestBody BatchRequest body) {
         if (body == null || body.texts == null || body.texts.isEmpty()) {
-            return Result.ok(List.of());
+            return R.ok(List.of());
         }
         List<String> texts = body.texts;
         if (texts.size() > 50) {
-            return Result.fail(400, "单次最多分析 50 条, 当前 " + texts.size() + " 条");
+            return R.fail(400, "单次最多分析 50 条, 当前 " + texts.size() + " 条");
         }
         List<Map<String, Object>> out = new ArrayList<>(texts.size());
         for (String t : texts) {
             if (!StringUtils.hasText(t)) continue;
             out.add(buildClassifyResult(t, "llm"));
         }
-        return Result.ok(out);
+        return R.ok(out);
     }
 
     // ====================== 场景 1: 客户反馈分析 ======================
@@ -93,7 +93,7 @@ public class SentimentController {
     @Operation(summary = "场景一·客户反馈分析",
             description = "输入多条用户评论(每行一条), 返回情感分布计数、Top 抱怨词、Top 表扬词")
     @PostMapping("/feedback/analyze")
-    public Result<Map<String, Object>> analyzeFeedback(@RequestBody FeedbackRequest body) {
+    public R<Map<String, Object>> analyzeFeedback(@RequestBody FeedbackRequest body) {
         if (body == null || body.texts == null) body = new FeedbackRequest();
         List<String> raw = body.texts.stream()
                 .filter(StringUtils::hasText)
@@ -107,7 +107,7 @@ public class SentimentController {
             resp.put("topPositive", List.of());
             resp.put("topNegative", List.of());
             resp.put("samples", List.of());
-            return Result.ok(resp);
+            return R.ok(resp);
         }
 
         // 分布计数
@@ -148,7 +148,7 @@ public class SentimentController {
         resp.put("topPositive", topKeywords(posKw, 8));
         resp.put("topNegative", topKeywords(negKw, 8));
         resp.put("samples", samples);
-        return Result.ok(resp);
+        return R.ok(resp);
     }
 
     // ====================== 场景 2: 社交媒体监控 ======================
@@ -156,9 +156,9 @@ public class SentimentController {
     @Operation(summary = "场景二·社交媒体监控",
             description = "分析单条社媒文本的情感 + 严重度 + 命中关键词; 严重度仅在 NEGATIVE 时返回(low/medium/high)")
     @PostMapping("/social/analyze")
-    public Result<Map<String, Object>> analyzeSocial(@RequestBody SocialRequest body) {
+    public R<Map<String, Object>> analyzeSocial(@RequestBody SocialRequest body) {
         if (body == null || !StringUtils.hasText(body.text)) {
-            return Result.fail(400, "text 不能为空");
+            return R.fail(400, "text 不能为空");
         }
         String text = body.text.trim();
 
@@ -186,7 +186,7 @@ public class SentimentController {
         resp.put("sentiment", tag);
         resp.put("severity", severity);
         resp.put("keywords", hits);
-        return Result.ok(resp);
+        return R.ok(resp);
     }
 
     // ====================== 场景 3: 聊天机器人响应 ======================
@@ -194,9 +194,9 @@ public class SentimentController {
     @Operation(summary = "场景三·聊天机器人响应建议",
             description = "基于当前用户消息的情感, 返回建议语气 + 模板回复(对话历史仅用于上下文感知, 当前以最新一条 user 消息为准)")
     @PostMapping("/chat/reply")
-    public Result<Map<String, Object>> replyChat(@RequestBody ChatReplyRequest body) {
+    public R<Map<String, Object>> replyChat(@RequestBody ChatReplyRequest body) {
         if (body == null || !StringUtils.hasText(body.message)) {
-            return Result.fail(400, "message 不能为空");
+            return R.fail(400, "message 不能为空");
         }
         String text = body.message.trim();
 
@@ -214,14 +214,14 @@ public class SentimentController {
         resp.put("tone", suggestTone(tag));
         resp.put("templateReply", templateReply(tag, text));
         resp.put("userMessage", text);
-        return Result.ok(resp);
+        return R.ok(resp);
     }
 
     // ====================== 场景描述 ======================
 
     @Operation(summary = "三个使用场景描述", description = "页面顶部 banner 用, 返回 3 个场景的标题与说明")
     @GetMapping("/scenarios")
-    public Result<List<Map<String, Object>>> scenarios() {
+    public R<List<Map<String, Object>>> scenarios() {
         List<Map<String, Object>> list = List.of(
                 Map.of(
                         "key", "feedback",
@@ -242,7 +242,7 @@ public class SentimentController {
                         "desc", "理解用户情感以提供更好的响应"
                 )
         );
-        return Result.ok(list);
+        return R.ok(list);
     }
 
     // ====================== 内部辅助 ======================

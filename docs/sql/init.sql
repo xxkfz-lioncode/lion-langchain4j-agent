@@ -1,7 +1,11 @@
 -- ============================================================
 -- Lion LangChain4j Agent 初始化脚本(MySQL 8.x)
 -- 执行方式: mysql -u root -p < init.sql 或使用 Navicat 等工具执行
+-- 注意: 必须以 UTF-8 编码保存本文件; SET NAMES 防止脚本内中文
+--       (如默认昵称)按错误的客户端字符集写入变成乱码
 -- ============================================================
+
+SET NAMES utf8mb4;
 
 CREATE DATABASE IF NOT EXISTS `lion_agent_4j`
     DEFAULT CHARACTER SET utf8mb4

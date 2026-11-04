@@ -62,7 +62,7 @@ public class SkillsFactory {
      * 不会发起任何网络请求, 启动开销可忽略。
      */
     @PostConstruct
-    void init() {
+    public void init() {
         this.skills = assemble();
     }
 

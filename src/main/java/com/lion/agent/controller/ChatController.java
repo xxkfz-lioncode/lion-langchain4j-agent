@@ -2,7 +2,7 @@ package com.lion.agent.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
 import com.lion.agent.common.exception.BusinessException;
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.pojo.dto.ChatReply;
 import com.lion.agent.pojo.dto.ChatRequest;
 import com.lion.agent.service.ChatService;
@@ -57,13 +57,13 @@ public class ChatController {
      */
     @Operation(summary = "发送消息(阻塞式)", description = "等模型整段生成完再返回; conversationId 为空时自动新建会话")
     @PostMapping("/send")
-    public Result<ChatReply> send(@RequestBody @Valid ChatRequest request) {
+    public R<ChatReply> send(@RequestBody @Valid ChatRequest request) {
         Long userId = currentUserId();
         Long conversationId = ensureConversation(userId, request.getConversationId());
         conversationService.renameIfDefault(conversationId, request.getMessage());
         String memoryId = buildMemoryId(userId, conversationId);
         String reply = chatService.chat(memoryId, request.getMessage());
-        return Result.ok(new ChatReply(reply));
+        return R.ok(new ChatReply(reply));
     }
 
     /**
@@ -112,13 +112,13 @@ public class ChatController {
     /** 清空当前指定会话的上下文 */
     @Operation(summary = "清空会话上下文", description = "仅清除 LangChain4j 记忆, 不删除会话与历史记录")
     @PostMapping("/clear")
-    public Result<Void> clear(
+    public R<Void> clear(
             @Parameter(description = "会话id, 为空时自动新建", example = "1")
             @RequestParam(value = "conversationId", required = false) Long conversationId) {
         Long userId = currentUserId();
         Long finalConversationId = ensureConversation(userId, conversationId);
         chatService.clear(buildMemoryId(userId, finalConversationId));
-        return Result.ok();
+        return R.ok();
     }
 
     /** 向 SSE 连接写入一个 data 事件; 连接断开时终止整个流 */

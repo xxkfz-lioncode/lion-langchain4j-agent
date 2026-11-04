@@ -4,7 +4,7 @@ import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.json.JSONException;
 import cn.hutool.json.JSONUtil;
 import com.lion.agent.assistant.ManualAssistant;
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.mcp.McpProperties;
 import dev.langchain4j.agent.tool.ToolSpecification;
@@ -104,7 +104,7 @@ public class McpController {
     @Operation(summary = "MCP 连接信息",
             description = "返回 enabled/url/clientKey/instructions/toolCount, 用于页面顶部状态栏")
     @GetMapping("/info")
-    public Result<Map<String, Object>> info() {
+    public R<Map<String, Object>> info() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("enabled", mcpProperties.isEnabled());
         data.put("url", mcpProperties.getUrl());
@@ -122,7 +122,7 @@ public class McpController {
             data.put("instructions", "");
             data.put("toolCount", -1);
         }
-        return Result.ok(data);
+        return R.ok(data);
     }
 
     // ====================== 工具列表 ======================
@@ -137,12 +137,12 @@ public class McpController {
     @Operation(summary = "列出 MCP 工具",
             description = "返回每个工具的 name / description / parameters(JSON Schema); 不经模型")
     @GetMapping("/tools")
-    public Result<List<Map<String, Object>>> listTools() {
+    public R<List<Map<String, Object>>> listTools() {
         ensureMcpReady();
         List<Map<String, Object>> tools = mcpClient.listTools().stream()
                 .map(McpController::describe)
                 .toList();
-        return Result.ok(tools);
+        return R.ok(tools);
     }
 
     /**
@@ -153,7 +153,7 @@ public class McpController {
     @Operation(summary = "单个工具的参数 Schema",
             description = "按工具名查询, 返回完整 JSON Schema(供前端 JSON Viewer 渲染)")
     @GetMapping("/tools/{name}")
-    public Result<Map<String, Object>> toolDetail(
+    public R<Map<String, Object>> toolDetail(
             @Parameter(description = "工具名(URL 编码)", required = true, example = "echo")
             @PathVariable("name") String name) {
         ensureMcpReady();
@@ -161,7 +161,7 @@ public class McpController {
                 .filter(spec -> spec.name().equals(name))
                 .findFirst()
                 .map(McpController::describe)
-                .map(Result::ok)
+                .map(R::ok)
                 .orElseThrow(() -> new BusinessException("工具不存在: " + name));
     }
 
@@ -180,20 +180,18 @@ public class McpController {
             description = "交给 ManualAssistant 处理; 模型可调用编程式工具 / Skills / MCP 工具; "
                     + "memoryId 留空时按登录用户隔离上下文")
     @PostMapping("/chat")
-    public Result<Map<String, Object>> chat(@RequestBody ChatBody body) {
+    public R<Map<String, Object>> chat(@RequestBody ChatBody body) {
         String message = body == null ? null : body.message;
         if (!StringUtils.hasText(message)) {
             throw new BusinessException("消息内容不能为空");
         }
-        String memoryId = (body != null && StringUtils.hasText(body.memoryId))
-                ? body.memoryId
-                : defaultMemoryId();
+        String memoryId = StringUtils.hasText(body.memoryId) ? body.memoryId : defaultMemoryId();
 
         String reply = manualAssistant.chat(memoryId, message);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("memoryId", memoryId);
         data.put("reply", reply);
-        return Result.ok(data);
+        return R.ok(data);
     }
 
     /**

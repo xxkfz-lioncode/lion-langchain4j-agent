@@ -1,6 +1,6 @@
 package com.lion.agent.rag.controller;
 
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.rag.dto.MilvusConnectionDTO;
 import com.lion.agent.rag.util.MilvusVectorInspector;
@@ -51,7 +51,7 @@ public class VectorStoreController {
             description = "读取 application.yml 的项目默认连接(langchain4j.milvus.*), 并返回该连接下的"
                     + "数据库列表与集合列表; Milvus 连不上时 connected=false 且 error 带原因, 不抛错")
     @GetMapping("/connection")
-    public Result<Map<String, Object>> connection() {
+    public R<Map<String, Object>> connection() {
         MilvusConnectionDTO defaults = milvusVectorInspector.defaultConnection();
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("defaultConnection", defaults);
@@ -65,7 +65,7 @@ public class VectorStoreController {
             data.put("connected", false);
             data.put("error", e.getMessage());
         }
-        return Result.ok(data);
+        return R.ok(data);
     }
 
     /**
@@ -73,8 +73,8 @@ public class VectorStoreController {
      */
     @Operation(summary = "数据库列表", description = "查询指定 Milvus 连接下的所有数据库(showDatabases)")
     @GetMapping("/databases")
-    public Result<List<String>> databases(@ModelAttribute MilvusConnectionDTO conn) {
-        return Result.ok(milvusVectorInspector.listDatabases(conn));
+    public R<List<String>> databases(@ModelAttribute MilvusConnectionDTO conn) {
+        return R.ok(milvusVectorInspector.listDatabases(conn));
     }
 
     /**
@@ -82,8 +82,8 @@ public class VectorStoreController {
      */
     @Operation(summary = "集合列表", description = "查询指定数据库下的所有集合(showCollections)")
     @GetMapping("/collections")
-    public Result<List<String>> collections(@ModelAttribute MilvusConnectionDTO conn) {
-        return Result.ok(milvusVectorInspector.listCollections(conn));
+    public R<List<String>> collections(@ModelAttribute MilvusConnectionDTO conn) {
+        return R.ok(milvusVectorInspector.listCollections(conn));
     }
 
     /**
@@ -91,8 +91,8 @@ public class VectorStoreController {
      */
     @Operation(summary = "集合概览", description = "集合名、片段总数(count(*))、向量维度、字段列表")
     @GetMapping("/collection-info")
-    public Result<Map<String, Object>> collectionInfo(@ModelAttribute MilvusConnectionDTO conn) {
-        return Result.ok(milvusVectorInspector.collectionInfo(conn));
+    public R<Map<String, Object>> collectionInfo(@ModelAttribute MilvusConnectionDTO conn) {
+        return R.ok(milvusVectorInspector.collectionInfo(conn));
     }
 
     // ====================== 片段数据 ======================
@@ -106,7 +106,7 @@ public class VectorStoreController {
                     + "withVector=true 时额外回传每条片段的向量本体(1024 维 float, 约 4KB/条, 流量较大按需开启)。"
                     + "注意 offset+limit 受 Milvus 单次 query 上限 16384 限制")
     @GetMapping("/segments")
-    public Result<Map<String, Object>> segments(
+    public R<Map<String, Object>> segments(
             @ModelAttribute MilvusConnectionDTO conn,
             @Parameter(description = "每页条数(1~100)", example = "20")
             @RequestParam(value = "limit", defaultValue = "20") Integer limit,
@@ -129,7 +129,7 @@ public class VectorStoreController {
         data.put("fileName", fileName);
         data.put("withVector", withVector);
         data.put("items", items);
-        return Result.ok(data);
+        return R.ok(data);
     }
 
     /**
@@ -137,10 +137,10 @@ public class VectorStoreController {
      */
     @Operation(summary = "片段总数", description = "指定集合的片段总数, fileName 可选过滤")
     @GetMapping("/count")
-    public Result<Long> count(
+    public R<Long> count(
             @ModelAttribute MilvusConnectionDTO conn,
             @Parameter(description = "按文件名精确过滤(可选)")
             @RequestParam(value = "fileName", required = false) String fileName) {
-        return Result.ok(milvusVectorInspector.count(conn, fileName));
+        return R.ok(milvusVectorInspector.count(conn, fileName));
     }
 }

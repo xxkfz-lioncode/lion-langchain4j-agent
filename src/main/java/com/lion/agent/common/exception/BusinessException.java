@@ -1,6 +1,6 @@
 package com.lion.agent.common.exception;
 
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import lombok.Getter;
 
 /**
@@ -12,7 +12,7 @@ public class BusinessException extends RuntimeException {
     private final int code;
 
     public BusinessException(String message) {
-        this(Result.CODE_BAD_REQUEST, message);
+        this(R.CODE_BAD_REQUEST, message);
     }
 
     public BusinessException(int code, String message) {

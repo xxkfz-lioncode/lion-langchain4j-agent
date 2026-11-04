@@ -1,6 +1,6 @@
 package com.lion.agent.rag.controller;
 
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.rag.dto.RagChatRequest;
 import com.lion.agent.rag.service.RagService;
@@ -55,7 +55,7 @@ public class RagController {
             description = "multipart 上传, 支持 .pdf/.txt/.md, 上限 20MB, 追加式入库(不替换旧知识); "
                     + "切分方式由 splitterType 等可选参数指定, 不传用默认值")
     @PostMapping("/upload")
-    public Result<RagUploadVO> upload(
+    public R<RagUploadVO> upload(
             @Parameter(description = "知识文档文件(.pdf/.txt/.md)", required = true)
             @RequestParam("file") MultipartFile file,
             @Parameter(description = "切分方式, 见 GET /api/rag/splitters", example = "PARAGRAPH")
@@ -79,7 +79,7 @@ public class RagController {
         if (!supported) {
             throw new BusinessException("仅支持 .txt / .md / .pdf 格式的知识文档");
         }
-        return Result.ok(ragService.ingestUpload(name, file.getSize(), file.getBytes(),
+        return R.ok(ragService.ingestUpload(name, file.getSize(), file.getBytes(),
                 SplitterConfig.of(splitterType, segmentSize, overlap, pattern)));
     }
 
@@ -88,8 +88,8 @@ public class RagController {
      */
     @Operation(summary = "文档列表", description = "按上传时间倒序, 供前端文件列表展示")
     @GetMapping("/documents")
-    public Result<List<RagDocumentVO>> documents() {
-        return Result.ok(ragService.listDocuments());
+    public R<List<RagDocumentVO>> documents() {
+        return R.ok(ragService.listDocuments());
     }
 
     /**
@@ -97,11 +97,11 @@ public class RagController {
      */
     @Operation(summary = "删除单个文档", description = "同时删除该文件在向量库中的全部片段")
     @DeleteMapping("/documents/{id}")
-    public Result<Void> deleteDocument(
+    public R<Void> deleteDocument(
             @Parameter(description = "文档id", required = true, example = "1")
             @PathVariable("id") Long id) {
         ragService.deleteDocument(id);
-        return Result.ok();
+        return R.ok();
     }
 
     /**
@@ -109,8 +109,8 @@ public class RagController {
      */
     @Operation(summary = "知识库问答", description = "阻塞式, 先向量检索相关知识片段再由千问生成回答, 整段返回")
     @PostMapping("/chat")
-    public Result<String> chat(@RequestBody @Valid RagChatRequest request) {
-        return Result.ok(ragService.answer(request.getQuestion()));
+    public R<String> chat(@RequestBody @Valid RagChatRequest request) {
+        return R.ok(ragService.answer(request.getQuestion()));
     }
 
     /**
@@ -118,8 +118,8 @@ public class RagController {
      */
     @Operation(summary = "当前知识库片段数", description = "向量库中所有知识片段的总数")
     @GetMapping("/size")
-    public Result<Long> size() {
-        return Result.ok(ragService.size());
+    public R<Long> size() {
+        return R.ok(ragService.size());
     }
 
     /**
@@ -127,7 +127,7 @@ public class RagController {
      */
     @Operation(summary = "切分方式列表", description = "上传文档时下拉框数据源, 含默认参数与正则填写提示")
     @GetMapping("/splitters")
-    public Result<List<RagSplitterVO>> splitters() {
-        return Result.ok(ragService.listSplitters());
+    public R<List<RagSplitterVO>> splitters() {
+        return R.ok(ragService.listSplitters());
     }
 }

@@ -124,14 +124,15 @@ public class ManualAssistant {
                 .chatModel(chatModel)                    // 阻塞对话用
                 .streamingChatModel(streamingChatModel)  // chatStream 用
                 .chatMemoryProvider(chatMemoryProvider)  // 按 memoryId(登录用户)隔离多轮上下文
-                 .contentRetriever(contentRetriever) // RAG 检索增强
+                .contentRetriever(contentRetriever) // RAG 检索增强
                 .tools(tools)                            // 编程式注册工具: spec -> executor
                 // 输入护栏(按声明顺序串行执行: A → B → Logging; 前面 fatal 会短路后面, 见 GuardrailA)
                 .inputGuardrails(new GuardrailB(), new GuardrailA(), new LoggingInputGuardrail())
                 // 输出护栏(工具调用完成后, 默认仅 trace 日志, reprompt/fatal 由 LoggingOutputGuardrail.validate() 决定)
                 .outputGuardrails(new LoggingOutputGuardrail())
                 // 失败时最多自动重答 1 次 (maxRetries=2 = 总共 2 次尝试, 第 2 次还失败就抛异常)
-                .outputGuardrailsConfig(OutputGuardrailsConfig.builder().maxRetries(2).build());
+                .outputGuardrailsConfig(OutputGuardrailsConfig.builder().maxRetries(2).build())
+                ;
 
         // 合并 Skills + MCP 两个动态 ToolProvider
         // - toolProviders(...) 是变参, 内部把多个 Provider 的 provideTools 结果拼成一组工具

@@ -56,7 +56,7 @@ public class WeatherApiClient {
      * 只要熔断器在工作，每次调用都会有留痕；一条都没有则说明 @CircuitBreaker 没生效(切面未装配)。
      */
     @PostConstruct
-    void registerCircuitBreakerListeners() {
+    public void registerCircuitBreakerListeners() {
         circuitBreakerRegistry.circuitBreaker(CIRCUIT_NAME)
                 .getEventPublisher()
                 .onSuccess(event -> log.info("[天气] 调用成功"))

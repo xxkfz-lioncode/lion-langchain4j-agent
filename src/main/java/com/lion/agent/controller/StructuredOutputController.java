@@ -1,7 +1,7 @@
 package com.lion.agent.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.lion.agent.common.Result;
+import com.lion.agent.common.R;
 import com.lion.agent.structured.StructuredOutputService;
 import com.lion.agent.structured.StructuredOutputStrategy;
 import com.lion.agent.structured.model.MovieReview;
@@ -42,14 +42,14 @@ public class StructuredOutputController {
 
     @Operation(summary = "已装配的方式", description = "页面 banner / 选项卡用, 返回每种方式的 key / 中文名 / 描述")
     @GetMapping("/strategies")
-    public Result<List<Map<String, String>>> strategies() {
+    public R<List<Map<String, String>>> strategies() {
         List<Map<String, String>> list = Arrays.stream(StructuredOutputStrategy.values())
                 .map(s -> Map.of(
                         "key", s.name(),
                         "label", s.label(),
                         "description", s.description()))
                 .toList();
-        return Result.ok(list);
+        return R.ok(list);
     }
 
     // ====================== 单方式抽取 ======================
@@ -57,19 +57,19 @@ public class StructuredOutputController {
     @Operation(summary = "按指定方式抽取",
             description = "strategy 取 JSON_SCHEMA / JSON_MODE / PROMPT_ONLY 之一; 返回解析后的 MovieReview")
     @PostMapping("/extract")
-    public Result<MovieReview> extract(@RequestBody ExtractRequest body) {
+    public R<MovieReview> extract(@RequestBody ExtractRequest body) {
         if (body == null || !StringUtils.hasText(body.text)) {
-            return Result.fail(400, "text 不能为空");
+            return R.fail(400, "text 不能为空");
         }
         StructuredOutputStrategy strategy;
         try {
             strategy = StructuredOutputStrategy.valueOf(body.strategy);
         } catch (Exception e) {
-            return Result.fail(400, "strategy 取值必须是 JSON_SCHEMA / JSON_MODE / PROMPT_ONLY 之一");
+            return R.fail(400, "strategy 取值必须是 JSON_SCHEMA / JSON_MODE / PROMPT_ONLY 之一");
         }
         logCurrentUser();
         MovieReview value = structuredOutputService.extract(body.text.trim(), MovieReview.target(), strategy);
-        return Result.ok(value);
+        return R.ok(value);
     }
 
     // ====================== 自动降级 ======================
@@ -77,9 +77,9 @@ public class StructuredOutputController {
     @Operation(summary = "自动降级抽取",
             description = "按 JSON Schema -> JSON Mode -> 纯提示词 顺序尝试, 返回第一个成功的结果 + 沿途失败原因")
     @PostMapping("/auto")
-    public Result<Map<String, Object>> auto(@RequestBody TextRequest body) {
+    public R<Map<String, Object>> auto(@RequestBody TextRequest body) {
         if (body == null || !StringUtils.hasText(body.text)) {
-            return Result.fail(400, "text 不能为空");
+            return R.fail(400, "text 不能为空");
         }
         logCurrentUser();
         StructuredOutputService.FallbackResult<MovieReview> r =
@@ -89,7 +89,7 @@ public class StructuredOutputController {
         resp.put("usedStrategy", r.usedStrategy().label());
         resp.put("value", r.value());
         resp.put("failures", r.failures());
-        return Result.ok(resp);
+        return R.ok(resp);
     }
 
     // ====================== 三种方式对照 ======================
@@ -97,9 +97,9 @@ public class StructuredOutputController {
     @Operation(summary = "三种方式对照抽取",
             description = "同一条文本上跑三种方式, 返回每种方式的 success / value 或 error / costMillis")
     @PostMapping("/compare")
-    public Result<Map<String, Object>> compare(@RequestBody TextRequest body) {
+    public R<Map<String, Object>> compare(@RequestBody TextRequest body) {
         if (body == null || !StringUtils.hasText(body.text)) {
-            return Result.fail(400, "text 不能为空");
+            return R.fail(400, "text 不能为空");
         }
         logCurrentUser();
         String text = body.text.trim();
@@ -121,7 +121,7 @@ public class StructuredOutputController {
         Map<String, Object> resp = new LinkedHashMap<>();
         resp.put("text", text);
         resp.put("results", results);
-        return Result.ok(resp);
+        return R.ok(resp);
     }
 
     /** 当前用户日志(实际鉴权由 Sa-Token 拦截器统一处理, 这里只记录便于排查) */
