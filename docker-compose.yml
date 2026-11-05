@@ -1,0 +1,83 @@
+# ============================================================
+# Lion LangChain4j Agent - 本地中间件(MySQL / Redis / Milvus)
+# 仅启动中间件, 前后端仍在宿主机上运行(start-backend.bat / frontend)。
+# 三个镜像本地均已存在, 不会触发拉取:
+#   mysql:8.0  redis:7  milvusdb/milvus:v2.4.17
+# 启动: docker compose up -d    停止: docker compose down
+# ============================================================
+
+services:
+
+  # ---- MySQL 8.x (业务数据 + 会话记忆持久化) ----
+  mysql:
+    image: mysql:8.0
+    container_name: lion-mysql
+    restart: unless-stopped
+    ports:
+      - "3308:3306"                    # 宿主机 3306 被本地 mysqld 占用, 容器映射到 3308; .env 中 DB_PORT=3308
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"     # 与 README 默认账号一致(root/123456)
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_general_ci
+    volumes:
+      # 首次启动(空数据目录)时自动执行建库建表脚本; 复用旧卷时不会重复执行
+      - ./docs/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p123456" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---- Redis (Sa-Token 登录态 / Redisson, 无密码) ----
+  redis:
+    image: redis:7
+    container_name: lion-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"                    # .env 默认 REDIS_HOST/PORT=127.0.0.1:6379, REDIS_PASSWORD 为空
+    command: [ "redis-server", "--appendonly", "yes" ]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---- Milvus 2.4+ standalone (RAG 向量库) ----
+  # 19530: SDK(gRPC)端口, 9091: 健康检查端口; 集合 lion_langchain4j_docs 由后端自动创建
+  # 复用旧容器 lion-agent 的外部数据卷(保留既有向量数据), 不新建空卷
+  milvus:
+    image: milvusdb/milvus:v2.4.17
+    container_name: lion-milvus
+    restart: unless-stopped
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    command: [ "milvus", "run", "standalone" ]
+    environment:
+      # 内嵌 etcd + 本地存储: 单容器 standalone, 不依赖外部 etcd/minio 容器
+      ETCD_USE_EMBED: "true"
+      ETCD_DATA_DIR: "/var/lib/milvus/etcd"
+      COMMON_STORAGETYPE: "local"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9091/healthz" ]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 5
+
+volumes:
+  mysql-data:                        # 本项目专属新卷(首次启动自动执行 docs/sql/init.sql 初始化)
+  redis-data:
+    name: lion-agent_redis-data    # 外部已有卷(旧项目 lion-agent 的 Redis 数据), 数据保留
+    external: true
+  milvus-data:                       # 本项目专属新卷(旧卷配置依赖已不存在的外部 etcd, 故弃用)
