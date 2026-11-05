@@ -1,8 +1,8 @@
 package com.lion.agent.controller.test;
 
-import com.lion.agent.classification.Sentiment;
-import com.lion.agent.classification.SentimentAnalyzer;
-import com.lion.agent.classification.SentimentEmbeddingClassifier;
+import com.lion.agent.ai.classification.Sentiment;
+import com.lion.agent.ai.classification.SentimentAnalyzer;
+import com.lion.agent.ai.classification.SentimentEmbeddingClassifier;
 import dev.langchain4j.classification.ClassificationResult;
 import dev.langchain4j.classification.ScoredLabel;
 import io.swagger.v3.oas.annotations.Operation;

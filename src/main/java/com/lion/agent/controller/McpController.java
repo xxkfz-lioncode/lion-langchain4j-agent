@@ -3,10 +3,10 @@ package com.lion.agent.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.hutool.json.JSONException;
 import cn.hutool.json.JSONUtil;
-import com.lion.agent.assistant.ManualAssistant;
+import com.lion.agent.ai.assistant.ManualAssistant;
 import com.lion.agent.common.R;
 import com.lion.agent.common.exception.BusinessException;
-import com.lion.agent.mcp.McpProperties;
+import com.lion.agent.ai.mcp.McpProperties;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.mcp.client.McpClient;
 import dev.langchain4j.service.TokenStream;
@@ -51,12 +51,12 @@ import java.util.Map;
  * </ul>
  * <p>
  * <b>降级策略</b>: 当 {@code lion.mcp.enabled=false} 或 {@code lion.mcp.url} 留空时,
- * {@link com.lion.agent.mcp.McpClientConfig} 整体不装配, {@code McpClient} / {@code McpToolProvider}
+ * {@link com.lion.agent.ai.mcp.McpClientConfig} 整体不装配, {@code McpClient} / {@code McpToolProvider}
  * 注入为 {@code null}; 本 controller 用 {@code required = false} 容忍这种空状态, 但凡调用到
  * MCP 工具的接口都会抛 500 + 明确错误信息, 提示用户先去 application.yml 打开 MCP。
  *
- * @see com.lion.agent.assistant.ManualAssistant
- * @see com.lion.agent.mcp.McpClientConfig
+ * @see com.lion.agent.ai.assistant.ManualAssistant
+ * @see com.lion.agent.ai.mcp.McpClientConfig
  */
 @Tag(name = "MCP 调试", description = "Model Context Protocol 联调接口: 工具列表 / 工具详情 / 模型对话(需登录)")
 @Slf4j
@@ -71,7 +71,7 @@ public class McpController {
      * MCP 客户端与工具提供者(均为可选 —— MCP 未启用时为 null)。
      * <p>
      * 用 {@code required = false} 是因为 MCP 链路整体受
-     * {@code com.lion.agent.mcp.McpClientConfig} 上的 {@code @ConditionalOnProperty} 控制,
+     * {@code com.lion.agent.ai.mcp.McpClientConfig} 上的 {@code @ConditionalOnProperty} 控制,
      * 关闭 MCP 时这两个 Bean 都不存在, 注入必须容错。
      */
     private final McpClient mcpClient;

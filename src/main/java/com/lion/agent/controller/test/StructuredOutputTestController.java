@@ -1,9 +1,9 @@
 package com.lion.agent.controller.test;
 
-import com.lion.agent.structured.StructuredOutputService;
-import com.lion.agent.structured.StructuredOutputStrategy;
-import com.lion.agent.structured.StructuredTarget;
-import com.lion.agent.structured.model.MovieReview;
+import com.lion.agent.ai.structured.StructuredOutputService;
+import com.lion.agent.ai.structured.StructuredOutputStrategy;
+import com.lion.agent.ai.structured.StructuredTarget;
+import com.lion.agent.ai.structured.model.MovieReview;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

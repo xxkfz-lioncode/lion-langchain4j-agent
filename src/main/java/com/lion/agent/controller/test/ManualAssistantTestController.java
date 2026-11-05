@@ -1,6 +1,6 @@
 package com.lion.agent.controller.test;
 
-import com.lion.agent.assistant.ManualAssistant;
+import com.lion.agent.ai.assistant.ManualAssistant;
 import dev.langchain4j.service.TokenStream;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,7 +18,7 @@ import java.io.IOException;
 /**
  * 编程式助手联调测试接口(免登录): 测试 {@link ManualAssistant} 手工装配的 AiServices。
  * <p>
- * 与 {@link TestController}(注解式 {@code @AiService}) 对照使用:
+ * 与 {@link com.lion.agent.ai.assistant.AnnotatedAssistant AnnotatedAssistant}(注解式 {@code @AiService}) 对照使用:
  * 两者底层模型/记忆/工具语义一致, 区别仅在于工具是通过 ToolSpecification + ToolExecutor
  * 编程注册, 而不是 {@code @Tool} 注解扫描。
  */

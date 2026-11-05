@@ -1,9 +1,9 @@
 package com.lion.agent.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
-import com.lion.agent.classification.Sentiment;
-import com.lion.agent.classification.SentimentAnalyzer;
-import com.lion.agent.classification.SentimentEmbeddingClassifier;
+import com.lion.agent.ai.classification.Sentiment;
+import com.lion.agent.ai.classification.SentimentAnalyzer;
+import com.lion.agent.ai.classification.SentimentEmbeddingClassifier;
 import com.lion.agent.common.R;
 import dev.langchain4j.classification.ClassificationResult;
 import dev.langchain4j.classification.ScoredLabel;

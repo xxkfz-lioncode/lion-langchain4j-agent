@@ -25,6 +25,13 @@ public class LionAgentApplication {
 
     public static void main(String[] args) {
         EnvFileLoader.load();
+        // langchain4j 1.20: classpath 上同时存在 spring-rest-client 与 jdk-http-client 两套
+        // HTTP 客户端实现, 手工 build OpenAI 模型(如 ImageTools 的 OpenAiImageModel)时框架
+        // 检测到多个候选会抛 IllegalStateException(Conflict: multiple HTTP clients)。
+        // 这里全局显式指定用 JDK HttpClient, 必须在 Spring 装配任何模型 Bean 之前设置。
+        // 属性名/类名以 HttpClientBuilderLoader 源码为准: langchain4j.http.clientBuilderFactory
+        System.setProperty("langchain4j.http.clientBuilderFactory",
+                "dev.langchain4j.http.client.jdk.JdkHttpClientBuilderFactory");
         SpringApplication.run(LionAgentApplication.class, args);
     }
 

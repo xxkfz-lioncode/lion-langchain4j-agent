@@ -166,6 +166,16 @@ weather:
 # 当前: 已切到 stdio 模式, 接 @modelcontextprotocol/server-filesystem 演示 server,
 #       把项目根目录 / AI 工作目录暴露给 LLM, 让模型可以直接读 / 列目录 / 搜文件。
 lion:
+  # ---- 图像生成(DashScope 原生通义万相接口, 由 ImageTools 暴露为 @Tool) ----
+  # 注意: OpenAI 兼容模式不支持 /images/generations(404), 画图必须走原生 WanxImageModel
+  image:
+    # 密钥复用 QWEN_API_KEY; 模型默认 wanx2.1-t2i-turbo(速度优先),
+    # 可换 wanx2.1-t2i-plus(效果优先)/wanx-v1, 通过 .env 的 QWEN_IMAGE_MODEL 覆盖
+    api-key: ${QWEN_API_KEY:}
+    model-name: ${QWEN_IMAGE_MODEL:wanx2.1-t2i-turbo}
+    # 生成图片的本地保存目录(相对运行目录, 不存在自动创建)
+    save-dir: upload/images
+
   # ---- 知识库(RAG) ----
   rag:
     # 上传文件保存目录: 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)

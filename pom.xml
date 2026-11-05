@@ -190,6 +190,22 @@
             <version>1.20.0-beta30</version>
         </dependency>
 
+        <!-- DashScope 原生模块: 通义万相图像生成(WanxImageModel, 走 /api/v1 异步文生图接口)。
+             注意: DashScope 的 OpenAI 兼容模式不支持 /images/generations(404), 画图必须走原生接口;
+             版本取本地仓库已有的 1.1.0-beta7, 其使用的 Image/Response API 与核心 1.20.0 二进制兼容;
+             排除其传递的旧版 langchain4j-core, 统一随工程的 1.20.0 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-community-dashscope</artifactId>
+            <version>1.1.0-beta7</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>dev.langchain4j</groupId>
+                    <artifactId>langchain4j-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
         <!-- Guardrails: LLM 调用前后的输入/输出校验(示例见 LoggingInputGuardrail / LoggingOutputGuardrail) -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
