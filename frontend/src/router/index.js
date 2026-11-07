@@ -67,6 +67,12 @@ const routes = [
         meta: { title: '用户管理', parentTitle: '系统管理', requiresAuth: true }
       },
       {
+        path: 'llm-log',
+        name: 'llm-log',
+        component: () => import('@/views/ObservabilityView.vue'),
+        meta: { title: 'LLM 调用日志', parentTitle: '系统管理', requiresAuth: true }
+      },
+      {
         path: 'api-doc',
         name: 'api-doc',
         component: () => import('@/views/ApiDocView.vue'),

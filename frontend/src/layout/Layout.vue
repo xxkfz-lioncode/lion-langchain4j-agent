@@ -85,6 +85,10 @@
               <el-icon><User /></el-icon>
               <span>用户管理</span>
             </el-menu-item>
+            <el-menu-item index="/llm-log">
+              <el-icon><Odometer /></el-icon>
+              <span>LLM 调用日志</span>
+            </el-menu-item>
             <el-menu-item index="/api-doc">
               <el-icon><Document /></el-icon>
               <span>接口文档</span>
@@ -200,7 +204,8 @@ import {
   Connection,
   Tools,
   Coin,
-  SetUp
+  SetUp,
+  Odometer
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { getInfo, logout } from '@/api/auth'

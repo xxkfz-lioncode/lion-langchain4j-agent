@@ -1,6 +1,7 @@
 package com.lion.agent.service.impl;
 
 import com.lion.agent.ai.assistant.AnnotatedAssistant;
+import com.lion.agent.ai.observability.LlmCallContext;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.pojo.vo.MessageVO;
 import com.lion.agent.ai.memory.UserChatMemoryProvider;
@@ -48,8 +49,15 @@ public class ChatServiceImpl implements ChatService {
         if (!StringUtils.hasText(userMessage)) {
             throw new BusinessException("消息内容不能为空");
         }
-        // 注解式调用: 框架自动完成系统提示渲染、消息入记忆、工具调用、AI 回复入记忆
-        return assistant.chat(memoryId, userMessage);
+        // 开启 LLM 调用日志上下文(userId/memoryId/bizId), 供 LoggingChatModelListener 落库关联;
+        // 阻塞调用在 finally 中清理, 防止线程池复用串号
+        LlmCallContext.begin(memoryId);
+        try {
+            // 注解式调用: 框架自动完成系统提示渲染、消息入记忆、工具调用、AI 回复入记忆
+            return assistant.chat(memoryId, userMessage);
+        } finally {
+            LlmCallContext.clear();
+        }
     }
 
     @Override
@@ -57,6 +65,10 @@ public class ChatServiceImpl implements ChatService {
         if (!StringUtils.hasText(userMessage)) {
             throw new BusinessException("消息内容不能为空");
         }
+        // 流式调用: 模型请求在控制器调用 TokenStream.start() 时才真正发出(当前请求线程),
+        // 因此这里 begin 后不能就地 clear(流结束时机在回调线程), 由
+        // LlmObservabilityWebConfig 的拦截器在请求结束后统一清理
+        LlmCallContext.begin(memoryId);
         // 返回 TokenStream, 由控制器注册回调后 start(), 千问逐 token 推送
         return assistant.chatStream(memoryId, userMessage);
     }

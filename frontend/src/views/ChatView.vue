@@ -60,8 +60,15 @@
           <div class="msg-avatar">{{ item.role === 'user' ? '我' : 'AI' }}</div>
           <div class="msg-content">
             <!-- 用户消息原样纯文本展示; AI 消息渲染 markdown -->
+            <!-- 思考期(还没收到首个 token): 三点跳动动画, 代替空白气泡里孤零零的光标 -->
             <div
-              v-if="item.role === 'assistant'"
+              v-if="item.role === 'assistant' && item.streaming && !item.content"
+              class="msg-bubble"
+            >
+              <span class="thinking-dots"><i></i><i></i><i></i></span>
+            </div>
+            <div
+              v-else-if="item.role === 'assistant'"
               class="msg-bubble markdown-body"
               v-html="renderMd(item.content) + (item.streaming ? CURSOR_HTML : '')"
             ></div>
@@ -592,6 +599,43 @@ onMounted(async () => {
   }
   50% {
     opacity: 0;
+  }
+}
+
+/* 思考期(尚未收到首 token)的三点跳动动画 */
+.thinking-dots {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 1em;
+}
+
+.thinking-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #2d6cdf;
+  animation: dot-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.thinking-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes dot-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
   }
 }
 

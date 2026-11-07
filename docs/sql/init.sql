@@ -67,6 +67,30 @@ CREATE TABLE IF NOT EXISTS `chat_message` (
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='对话消息明细表';
 
+-- LLM 调用审计日志表(可观测性): LoggingChatModelListener 异步写入, 前端"LLM 调用日志"页面展示。
+-- 与 chat_message 职责分离: chat_message 是对话记忆(message_json 会还原进 prompt),
+-- 本表是调用审计(模型/Token/耗时/成败), 不存消息内容, 按 biz_id/memory_id 关联 chat_message
+CREATE TABLE IF NOT EXISTS `llm_call_log` (
+    `id`             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `biz_id`         VARCHAR(64)  NULL COMMENT '业务追踪id(一次用户提问一个UUID, 串起多轮工具调用)',
+    `memory_id`      VARCHAR(128) NULL COMMENT '会话记忆id(形如 chat:1:2); 非对话链路调用为空',
+    `user_id`        BIGINT       NULL COMMENT '用户id(冗余自 memory_id, 便于按用户查询)',
+    `model`          VARCHAR(64)  NULL COMMENT '模型名',
+    `input_tokens`   INT          DEFAULT 0 COMMENT '输入 token 数',
+    `output_tokens`  INT          DEFAULT 0 COMMENT '输出 token 数',
+    `total_tokens`   INT          DEFAULT 0 COMMENT '总 token 数',
+    `finish_reason`  VARCHAR(32)  NULL COMMENT '结束原因: STOP/TOOL_EXECUTION/LENGTH 等',
+    `duration_ms`    BIGINT       NULL COMMENT '本次模型调用耗时(毫秒)',
+    `success`        TINYINT      DEFAULT 1 COMMENT '是否成功(0=失败)',
+    `error_message`  VARCHAR(512) NULL COMMENT '失败原因(仅失败记录)',
+    `create_time`    DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '落库时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_biz` (`biz_id`),
+    KEY `idx_user` (`user_id`, `create_time`),
+    KEY `idx_create` (`create_time`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='LLM调用审计日志表';
+
 -- 知识库文档元信息表(RAG 追加式入库后记录每个文档; 文档主键 id 同时作为向量片段的 docId 元数据,
 -- 用于前端文件列表展示/按文件删除向量)
 DROP TABLE IF EXISTS `rag_document`;

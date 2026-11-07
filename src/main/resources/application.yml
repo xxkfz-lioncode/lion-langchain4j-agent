@@ -127,6 +127,8 @@ springdoc:
 logging:
   level:
     com.lion.agent: info
+    # 可观测性监听器 LoggingChatModelListener: 完整消息内容在 debug 级别, 需要看时放开下面这行
+    # com.lion.agent.ai.observability: debug
     # langchain4j 1.x 已移除 openai4j(dev.ai4j.openai4j), 模型请求/响应日志由 langchain4j OpenAI
     # 模块通过 log-requests/log-responses 配置控制; 需要排查时可将 dev.langchain4j 临时调为 debug
     dev.ai4j.openai4j: debug
