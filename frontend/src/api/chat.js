@@ -50,18 +50,26 @@ export async function chatStream(message, conversationId, { onToken, onDone } = 
 
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
-  let buffer = ''
+  let buf = ''
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop()
-    for (const line of lines) {
-      const text = line.trim()
-      if (!text.startsWith('data:')) continue
-      const data = text.slice(5).trim()
-      if (data === '[DONE]') {
+    buf += decoder.decode(value, { stream: true })
+    // SSE 事件按 \n\n 分隔; 同一事件内多行 data: 按 SSE 规范用 \n 拼接。
+    // Spring 的 SseEmitter 会把 token 里的换行拆成多行 data: 写出,
+    // 若把每行 data: 当成独立 token, 换行就丢了(表现为回复不换行)。
+    // 注意: Spring 写出格式是 "data:" + token(冒号后无空格), 所以直接 slice(5),
+    // 不能 trim/去前导空格 —— 模型会把空格单独切成一个 token, 一去空格就丢了,
+    // markdown 列表的 "- 文字" 会退化成 "-文字" 而不被识别为列表。
+    let idx
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const event = buf.slice(0, idx)
+      buf = buf.slice(idx + 2)
+      const data = event.split('\n')
+        .filter((l) => l.startsWith('data:'))
+        .map((l) => l.slice(5))
+        .join('\n')
+      if (data.trim() === '[DONE]') {
         onDone?.()
         return
       }

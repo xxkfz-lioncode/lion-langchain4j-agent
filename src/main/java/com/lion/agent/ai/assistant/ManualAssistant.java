@@ -22,6 +22,7 @@ import dev.langchain4j.service.tool.ToolExecutor;
 import dev.langchain4j.skills.Skills;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
@@ -93,9 +94,9 @@ public class ManualAssistant {
                            ChatMemoryProvider chatMemoryProvider,
                            ProgrammaticToolsFactory programmaticToolsFactory,
                            SkillsFactory skillsFactory,
-                           @org.springframework.beans.factory.annotation.Autowired(required = false)
+                           @Autowired(required = false)
                            ContentRetriever contentRetriever,
-                           @org.springframework.beans.factory.annotation.Autowired(required = false)
+                           @Autowired(required = false)
                            McpToolProvider mcpToolProvider) {
         this.chatModel = chatModel;
         this.streamingChatModel = streamingChatModel;
@@ -124,7 +125,7 @@ public class ManualAssistant {
                 .chatModel(chatModel)                    // 阻塞对话用
                 .streamingChatModel(streamingChatModel)  // chatStream 用
                 .chatMemoryProvider(chatMemoryProvider)  // 按 memoryId(登录用户)隔离多轮上下文
-                .contentRetriever(contentRetriever) // RAG 检索增强
+                .contentRetriever(contentRetriever)      // RAG 检索增强
                 .tools(tools)                            // 编程式注册工具: spec -> executor
                 // 输入护栏(按声明顺序串行执行: A → B → Logging; 前面 fatal 会短路后面, 见 GuardrailA)
                 .inputGuardrails(new GuardrailB(), new GuardrailA(), new LoggingInputGuardrail())

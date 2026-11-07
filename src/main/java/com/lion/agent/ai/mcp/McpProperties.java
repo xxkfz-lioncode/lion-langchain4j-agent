@@ -85,6 +85,20 @@ public class McpProperties {
      */
     private Map<String, String> headers;
 
+    /**
+     * MCP 协议版本(显式指定, 跳过客户端的协议自动探测)。
+     * <p>
+     * 背景: langchain4j 的 DefaultMcpClient 默认会先发 2026-07-28 协议的探测请求,
+     * 只实现 2025-11-25 的服务器(如 @modelcontextprotocol/server-filesystem 2.x)
+     * 对该请求不响应, 导致"探测 + 回退初始化"双双超时、Bean 创建失败。
+     * 显式指定后客户端直接按该版本初始化, 不做探测。
+     * <p>
+     * 可选值(与 DefaultMcpClient 对齐): {@code 2026-07-28}(现代协议) /
+     * {@code 2025-11-25}(legacy, 本项目 stdio server 所用) / {@code 2024-11-05}。
+     * 默认 {@code 2025-11-25}。
+     */
+    private String protocolVersion = "2025-11-25";
+
     /** McpClient.key(), 多客户端并存时用于消歧; 单实例取默认即可 */
     private String clientKey = "lion-mcp-demo";
 

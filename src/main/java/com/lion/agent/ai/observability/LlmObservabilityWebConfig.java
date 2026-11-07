@@ -1,6 +1,8 @@
 package com.lion.agent.ai.observability;
 
 import org.springframework.context.annotation.Configuration;
+import org.springframework.lang.NonNull;
+import org.springframework.lang.Nullable;
 import org.springframework.web.servlet.HandlerInterceptor;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -29,8 +31,11 @@ public class LlmObservabilityWebConfig implements WebMvcConfigurer {
     private static final HandlerInterceptor CLEAR_CONTEXT_INTERCEPTOR = new HandlerInterceptor() {
 
         @Override
-        public void afterCompletion(HttpServletRequest request, HttpServletResponse response, Object handler, Exception ex) {
-            LlmCallContext.clear();
+        public void afterCompletion(@NonNull HttpServletRequest request, @NonNull HttpServletResponse response,
+                                    @NonNull Object handler, @Nullable Exception ex) {
+            // 流式调用: 请求线程的 ThreadLocal 从 chatStream 的 begin 一直保留到这里,
+            // 据其 memoryId 注销活跃上下文注册表并清线程; 阻塞调用已在业务层 finally 中注销
+            LlmCallContext.finishCurrent();
         }
     };
 

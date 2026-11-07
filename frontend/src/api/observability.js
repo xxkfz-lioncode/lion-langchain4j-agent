@@ -14,3 +14,8 @@ export function pageLogs(params) {
 export function getStats() {
   return request.get('/api/log/llm/stats')
 }
+
+/** 调用链路详情: 同 bizId 的全部模型调用链 + 该次提问产生的全部消息 */
+export function getTrace(bizId) {
+  return request.get(`/api/log/llm/trace/${bizId}`)
+}

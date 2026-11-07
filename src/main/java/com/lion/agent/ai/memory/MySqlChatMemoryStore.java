@@ -1,6 +1,7 @@
 package com.lion.agent.ai.memory;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.lion.agent.ai.observability.LlmCallContext;
 import com.lion.agent.pojo.entity.ChatMessageEntity;
 import com.lion.agent.mapper.ChatMessageMapper;
 import dev.langchain4j.data.message.AiMessage;
@@ -63,19 +64,60 @@ public class MySqlChatMemoryStore implements ChatMemoryStore {
     public void updateMessages(Object memoryId, List<ChatMessage> messages) {
         String key = String.valueOf(memoryId);
         Long userId = parseUserId(memoryId);
+        // 工具循环时本方法在 reactor 回调线程执行(此处必然持有 memoryId, 且与后续模型调用
+        // 同线程): 把该会话的活跃上下文接回当前线程, 使本轮后续模型调用的 onRequest 能读到
+        // 上下文(修复第 2+ 轮调用 llm_call_log 缺 bizId/userId), 也保证下面 biz_id 盖章正确
+        LlmCallContext.rebind(key);
+        // 重写前先取旧行: 用于按"位置+JSON相等"保留历史消息的 biz_id(见下方说明)
+        List<ChatMessageEntity> oldRows = chatMessageMapper.selectList(
+                new LambdaQueryWrapper<ChatMessageEntity>()
+                        .eq(ChatMessageEntity::getMemoryId, key)
+                        .orderByAsc(ChatMessageEntity::getId));
         // 窗口消息为全量最新状态, 先清后插保证一致性(单会话低频, 性能可接受)
         chatMessageMapper.delete(
                 new LambdaQueryWrapper<ChatMessageEntity>()
                         .eq(ChatMessageEntity::getMemoryId, key));
-        for (ChatMessage message : messages) {
+
+        // biz_id 盖章规则(方案B: 消息与 LLM 调用精确关联):
+        // updateMessages 在一次提问期间会被多次全量重写(工具循环每加一条消息就重写一次),
+        // 若直接用当前 ThreadLocal 的 bizId 盖所有行, 会把上一轮提问的历史章覆盖掉。
+        // 因此: 与旧行"位置相同且 JSON 完全一致"的消息视为历史消息, 保留旧章;
+        //      新增的消息(本轮新产生的)才盖当前调用的 bizId; system 消息不盖章。
+        String currentBizId = LlmCallContext.get() == null ? null : LlmCallContext.get().bizId();
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage message = messages.get(i);
             ChatMessageEntity entity = new ChatMessageEntity();
             entity.setMemoryId(key);
             entity.setUserId(userId);
             entity.setRole(roleOf(message));
             entity.setContent(contentOf(message));
-            entity.setMessageJson(ChatMessageSerializer.messageToJson(message));
+            String json = ChatMessageSerializer.messageToJson(message);
+            entity.setMessageJson(json);
+            entity.setBizId(bizIdOf(message, i, oldRows, json, currentBizId));
             chatMessageMapper.insert(entity);
         }
+    }
+
+    /**
+     * 决定一条消息的 biz_id:
+     * <ul>
+     *   <li>system 消息 → null(系统提示不属于任何一次提问);</li>
+     *   <li>位置与旧行对应且 message_json 完全一致(消息一经加入记忆就不会变) → 保留旧 biz_id;</li>
+     *   <li>其余(本轮新增的消息) → 当前调用上下文的 bizId, 无上下文时为 null。</li>
+     * </ul>
+     */
+    private String bizIdOf(ChatMessage message, int index, List<ChatMessageEntity> oldRows,
+                           String json, String currentBizId) {
+        if (message instanceof SystemMessage) {
+            return null;
+        }
+        if (index < oldRows.size()) {
+            ChatMessageEntity old = oldRows.get(index);
+            if (json.equals(old.getMessageJson())) {
+                return old.getBizId();
+            }
+        }
+        return currentBizId;
     }
 
     @Override

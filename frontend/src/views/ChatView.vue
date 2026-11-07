@@ -136,7 +136,9 @@ function renderMd(text = '') {
   const raw = String(text || '')
   try {
     const html = marked.parse(raw, { breaks: true, gfm: true })
-    return DOMPurify.sanitize(html)
+    // marked 输出末尾带一个 \n, 而 .msg-bubble 是 white-space: pre-wrap,
+    // 会把这个尾换行渲染成一行空白, 导致气泡底部多出 ~22px 空行
+    return DOMPurify.sanitize(html).trim()
   } catch (e) {
     // 解析异常时兜底返回转义后的原文, 避免气泡空白
     return raw

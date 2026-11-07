@@ -19,12 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -204,9 +199,9 @@ public class McpController {
     @GetMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter chatStream(
             @Parameter(description = "用户消息(URL 编码)", required = true)
-            @org.springframework.web.bind.annotation.RequestParam("message") String message,
+            @RequestParam("message") String message,
             @Parameter(description = "memoryId, 留空按登录用户隔离", example = "mcp-user-1")
-            @org.springframework.web.bind.annotation.RequestParam(value = "memoryId", required = false) String memoryId) {
+            @RequestParam(value = "memoryId", required = false) String memoryId) {
         if (!StringUtils.hasText(message)) {
             throw new BusinessException("消息内容不能为空");
         }

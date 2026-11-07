@@ -73,11 +73,11 @@
 
     <!-- 日志明细表 -->
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="records" stripe>
+      <el-table v-loading="loading" :data="records" stripe @row-click="openDetail">
         <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="bizId" label="追踪ID" width="160" show-overflow-tooltip>
           <template #default="{ row }">
-            <span v-if="row.bizId" class="biz-id" @click="copyBizId(row.bizId)">{{ row.bizId }}</span>
+            <span v-if="row.bizId" class="biz-id" @click.stop="copyBizId(row.bizId)">{{ row.bizId }}</span>
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
@@ -121,6 +121,11 @@
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="落库时间" width="170" />
+        <el-table-column label="操作" width="70" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click.stop="openDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <div class="pager">
@@ -135,13 +140,87 @@
         />
       </div>
     </el-card>
+
+    <!-- 调用链路详情抽屉(方案B: bizId 打通 llm_call_log + chat_message) -->
+    <el-drawer
+      v-model="detail.visible"
+      :title="detail.currentId ? `调用详情 #${detail.currentId}` : '调用详情'"
+      size="640px"
+    >
+      <div v-loading="detail.loading" class="trace-body">
+        <template v-if="detail.trace">
+          <!-- 基本信息 -->
+          <el-descriptions :column="2" border size="small" class="trace-section">
+            <el-descriptions-item label="追踪ID" :span="2">
+              <span class="biz-id" @click="copyBizId(detail.trace.bizId)">{{ detail.trace.bizId }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="会话">{{ currentMemoryId || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="模型">{{ currentRow?.model || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="Token(入/出/总)">
+              {{ currentRow?.inputTokens ?? 0 }} / {{ currentRow?.outputTokens ?? 0 }} / {{ currentRow?.totalTokens ?? 0 }}
+            </el-descriptions-item>
+            <el-descriptions-item label="耗时">{{ currentRow?.durationMs ?? '-' }} ms</el-descriptions-item>
+            <el-descriptions-item label="结束原因">{{ currentRow?.finishReason || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="结果">
+              <el-tag :type="currentRow?.success === 1 ? 'success' : 'danger'" size="small">
+                {{ currentRow?.success === 1 ? '成功' : '失败' }}
+              </el-tag>
+            </el-descriptions-item>
+            <el-descriptions-item v-if="currentRow?.errorMessage" label="失败原因" :span="2">
+              {{ currentRow.errorMessage }}
+            </el-descriptions-item>
+          </el-descriptions>
+
+          <!-- 调用链(同一次提问的全部模型调用, 工具循环时多轮) -->
+          <div class="trace-section">
+            <div class="trace-title">调用链({{ detail.trace.chain.length }} 轮)</div>
+            <el-timeline class="trace-timeline">
+              <el-timeline-item
+                v-for="(item, idx) in detail.trace.chain"
+                :key="item.id"
+                :type="item.id === detail.currentId ? 'primary' : (item.success === 1 ? 'success' : 'danger')"
+                :hollow="item.id !== detail.currentId"
+                :timestamp="item.createTime"
+                placement="top"
+              >
+                <div class="chain-item" :class="{ active: item.id === detail.currentId }">
+                  <span class="chain-round">第 {{ idx + 1 }} 轮</span>
+                  <span class="chain-model">{{ item.model || '-' }}</span>
+                  <span class="chain-token">
+                    token {{ item.inputTokens ?? 0 }}/{{ item.outputTokens ?? 0 }}
+                  </span>
+                  <span class="chain-duration">{{ item.durationMs ?? '-' }} ms</span>
+                </div>
+              </el-timeline-item>
+            </el-timeline>
+          </div>
+
+          <!-- 消息还原(该次提问产生的全部消息, 取自 chat_message.biz_id) -->
+          <div class="trace-section">
+            <div class="trace-title">消息还原({{ detail.trace.messages.length }} 条)</div>
+            <div
+              v-for="m in detail.trace.messages"
+              :key="m.id"
+              class="trace-msg"
+              :class="m.role"
+            >
+              <div class="trace-msg-head">
+                <el-tag size="small" :type="roleTagType(m.role)">{{ roleLabel(m.role) }}</el-tag>
+                <span class="trace-msg-time">{{ m.createTime }}</span>
+              </div>
+              <div class="trace-msg-content">{{ m.content || '(工具调用/无文本内容)' }}</div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { pageLogs, getStats } from '@/api/observability'
+import { pageLogs, getStats, getTrace } from '@/api/observability'
 import { pageUsers } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
 
@@ -230,6 +309,51 @@ async function copyBizId(bizId) {
   }
 }
 
+// ---- 调用链路详情抽屉 ----
+const detail = reactive({
+  visible: false,
+  loading: false,
+  currentId: null,
+  trace: null
+})
+
+/** 当前点击的那条调用记录(抽屉头部基本信息取自此行) */
+const currentRow = computed(
+  () => detail.trace?.chain?.find((c) => c.id === detail.currentId) || null
+)
+/** 所属会话 memoryId(从调用链任一条取) */
+const currentMemoryId = computed(() => detail.trace?.chain?.[0]?.memoryId || '')
+
+/** 打开详情: 按行上的 bizId 拉取调用链与关联消息 */
+async function openDetail(row) {
+  if (!row.bizId) {
+    ElMessage.warning('该记录没有追踪ID(可能为系统调用或旧数据), 无法关联消息')
+    return
+  }
+  detail.currentId = row.id
+  detail.trace = null
+  detail.loading = true
+  detail.visible = true
+  try {
+    detail.trace = await getTrace(row.bizId)
+  } catch {
+    detail.visible = false
+  } finally {
+    detail.loading = false
+  }
+}
+
+function roleLabel(role) {
+  return { user: '用户', assistant: 'AI', tool: '工具', system: '系统' }[role] || role
+}
+
+function roleTagType(role) {
+  if (role === 'user') return 'primary'
+  if (role === 'assistant') return 'success'
+  if (role === 'tool') return 'warning'
+  return 'info'
+}
+
 onMounted(() => {
   loadPage()
   if (auth.isAdmin) loadUserOptions()
@@ -288,5 +412,81 @@ onMounted(() => {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* ---- 详情抽屉 ---- */
+.trace-body {
+  min-height: 200px;
+}
+
+.trace-section {
+  margin-bottom: 20px;
+}
+
+.trace-title {
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.trace-timeline {
+  padding-left: 4px;
+}
+
+.chain-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.chain-item.active {
+  color: #2d4a8f;
+  font-weight: 600;
+}
+
+.chain-model {
+  color: #606266;
+}
+
+.chain-token,
+.chain-duration {
+  color: #909399;
+}
+
+.trace-msg {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f5f7fa;
+}
+
+.trace-msg.user {
+  background: #eef2fb;
+}
+
+.trace-msg.tool {
+  background: #fdf6ec;
+}
+
+.trace-msg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.trace-msg-time {
+  font-size: 12px;
+  color: #c0c4cc;
+}
+
+.trace-msg-content {
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #303133;
 }
 </style>

@@ -143,9 +143,11 @@ public class McpClientConfig {
                     + "请检查 lion.mcp.transport (http|stdio) 及对应 url / command 是否配置正确");
         }
 
+        // 显式指定协议版本: 跳过 2026-07-28 探测请求(旧版 server 不认会导致初始化超时)
         return DefaultMcpClient.builder()
                 .key(props.getClientKey())
                 .transport(transport)
+                .protocolVersion(props.getProtocolVersion())
                 .build();
     }
 

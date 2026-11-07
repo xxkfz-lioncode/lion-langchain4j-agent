@@ -115,10 +115,14 @@
               <div class="msg-text markdown-body" v-html="renderMd(m.content)" />
             </div>
           </div>
-          <div v-if="streaming && messages[messages.length - 1]?.role === 'assistant'" class="msg-row assistant streaming">
+          <div v-if="streaming" class="msg-row assistant streaming">
             <div class="msg-avatar">AI</div>
             <div class="msg-bubble">
-              <div class="msg-text markdown-body" v-html="renderMd(currentReply) + CURSOR_HTML" />
+              <div v-if="currentReply" class="msg-text markdown-body" v-html="renderMd(currentReply) + CURSOR_HTML" />
+              <div v-else class="typing-indicator">
+                <span>正在思考</span>
+                <span class="typing-dots"><i /><i /><i /></span>
+              </div>
             </div>
           </div>
         </main>
@@ -208,7 +212,9 @@ const CURSOR_HTML = '<span class="stream-cursor"></span>'
 function renderMd(text = '') {
   const raw = String(text || '')
   try {
-    return DOMPurify.sanitize(marked.parse(raw, { breaks: true, gfm: true }))
+    // marked 输出末尾带一个 \n, 而 .msg-bubble 是 white-space: pre-wrap,
+    // 会把这个尾换行渲染成一行空白, 导致气泡底部多出 ~22px 空行
+    return DOMPurify.sanitize(marked.parse(raw, { breaks: true, gfm: true })).trim()
   } catch {
     return raw
   }
@@ -279,6 +285,7 @@ async function handleSend() {
   input.value = ''
   streaming.value = true
   currentReply.value = ''
+  scrollToBottom()
 
   // 平滑输出: 模型一次性吐大段也能稳定打字机
   let reply = ''
@@ -414,7 +421,7 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 280px 1fr 1fr;
+  grid-template-columns: 260px minmax(0, 1fr) minmax(0, 1.15fr);
   gap: 12px;
 }
 
@@ -638,11 +645,14 @@ onMounted(() => {
   overflow-y: auto;
   padding: 16px 20px;
   background: #fafbfc;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-empty {
+  margin: auto;
   text-align: center;
-  padding: 48px 16px;
+  padding: 24px 16px;
   color: #c0c4cc;
 }
 
@@ -662,6 +672,7 @@ onMounted(() => {
 
 .msg-row {
   display: flex;
+  align-items: flex-start;
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -680,6 +691,7 @@ onMounted(() => {
   font-size: 12px;
   color: #fff;
   flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .msg-row.assistant .msg-avatar {
@@ -691,12 +703,14 @@ onMounted(() => {
 }
 
 .msg-bubble {
-  max-width: 75%;
+  width: fit-content;
+  max-width: 78%;
   padding: 9px 13px;
   border-radius: 10px;
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .msg-row.assistant .msg-bubble {
@@ -739,6 +753,33 @@ onMounted(() => {
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* 思考期指示器: 发送后到首个 token 到达前, 用三点跳动代替空白 */
+.typing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #909399;
+  font-size: 13px;
+}
+.typing-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.typing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #c0c4cc;
+  animation: typing-bounce 1.2s infinite ease-in-out;
+}
+.typing-dots i:nth-child(2) { animation-delay: 0.15s; }
+.typing-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
 }
 
 .markdown-body {

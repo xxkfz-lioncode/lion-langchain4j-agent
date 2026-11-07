@@ -5,12 +5,17 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lion.agent.ai.observability.LlmCallLog;
 import com.lion.agent.ai.observability.LlmCallLogMapper;
+import com.lion.agent.ai.observability.LlmTraceVO;
 import com.lion.agent.common.R;
+import com.lion.agent.common.exception.BusinessException;
+import com.lion.agent.mapper.ChatMessageMapper;
+import com.lion.agent.pojo.entity.ChatMessageEntity;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,9 +40,11 @@ import java.util.Map;
 public class LlmLogController {
 
     private final LlmCallLogMapper llmCallLogMapper;
+    private final ChatMessageMapper chatMessageMapper;
 
-    public LlmLogController(LlmCallLogMapper llmCallLogMapper) {
+    public LlmLogController(LlmCallLogMapper llmCallLogMapper, ChatMessageMapper chatMessageMapper) {
         this.llmCallLogMapper = llmCallLogMapper;
+        this.chatMessageMapper = chatMessageMapper;
     }
 
     /** 分页查询调用日志(按 id 倒序, 即最新在前) */
@@ -64,6 +71,41 @@ public class LlmLogController {
         }
         wrapper.orderByDesc("id");
         return R.ok(llmCallLogMapper.selectPage(new Page<>(current, size), wrapper));
+    }
+
+    /**
+     * 调用链路详情(方案B): 按 bizId 聚合 llm_call_log 调用链 + chat_message 关联消息。
+     * <p>
+     * 一次提问一个 bizId: 工具循环的每轮模型调用在 llm_call_log 各有一条记录,
+     * 该次提问产生的每条消息(用户提问/工具结果/AI 回复)在 chat_message 盖同一个
+     * bizId 章 —— 据此还原"单次提问全链路视图"。
+     */
+    @Operation(summary = "调用链路详情", description = "按 bizId 聚合: 同一次提问的全部模型调用链 + 产生的全部消息; 权限同分页接口")
+    @GetMapping("/trace/{bizId}")
+    public R<LlmTraceVO> trace(
+            @Parameter(description = "业务追踪id", required = true) @PathVariable String bizId) {
+        List<LlmCallLog> chain = llmCallLogMapper.selectList(
+                new QueryWrapper<LlmCallLog>().eq("biz_id", bizId).orderByAsc("id"));
+        if (chain.isEmpty()) {
+            throw new BusinessException("追踪记录不存在");
+        }
+        // 权限: 非 admin 时链路上任一记录不属于本人即拒绝(消息表由同一会话写入, 无需重复校验)
+        if (!StpUtil.hasRole("admin")
+                && chain.stream().anyMatch(l -> !currentUserId().equals(l.getUserId()))) {
+            throw new BusinessException("无权查看该记录");
+        }
+
+        List<LlmTraceVO.TraceMessage> messages = chatMessageMapper.selectList(
+                        new QueryWrapper<ChatMessageEntity>().eq("biz_id", bizId).orderByAsc("id"))
+                .stream()
+                .map(m -> new LlmTraceVO.TraceMessage(m.getId(), m.getRole(), m.getContent(), m.getCreateTime()))
+                .toList();
+
+        LlmTraceVO vo = new LlmTraceVO();
+        vo.setBizId(bizId);
+        vo.setChain(chain);
+        vo.setMessages(messages);
+        return R.ok(vo);
     }
 
     /** 汇总统计: 总调用数 / 成功数 / 总 Token / 平均耗时(查询范围同分页接口) */

@@ -50,13 +50,13 @@ public class ChatServiceImpl implements ChatService {
             throw new BusinessException("消息内容不能为空");
         }
         // 开启 LLM 调用日志上下文(userId/memoryId/bizId), 供 LoggingChatModelListener 落库关联;
-        // 阻塞调用在 finally 中清理, 防止线程池复用串号
+        // 阻塞调用在 finally 中 end(清线程 + 注销活跃注册表), 防止线程池复用串号
         LlmCallContext.begin(memoryId);
         try {
             // 注解式调用: 框架自动完成系统提示渲染、消息入记忆、工具调用、AI 回复入记忆
             return assistant.chat(memoryId, userMessage);
         } finally {
-            LlmCallContext.clear();
+            LlmCallContext.end(memoryId);
         }
     }
 

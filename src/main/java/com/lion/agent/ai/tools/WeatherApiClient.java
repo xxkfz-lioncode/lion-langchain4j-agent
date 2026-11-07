@@ -5,11 +5,9 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 模拟「外部天气接口」客户端：演示 Resilience4j 声明式熔断器 {@link CircuitBreaker}。
@@ -42,13 +40,8 @@ public class WeatherApiClient {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
 
-    /** 演示用故障注入概率(0~1)：0=不注入故障，1=每次调用必失败 */
-    private final double mockFailureRate;
-
-    public WeatherApiClient(CircuitBreakerRegistry circuitBreakerRegistry,
-                            @Value("${weather.mock-failure-rate:0}") double mockFailureRate) {
+    public WeatherApiClient(CircuitBreakerRegistry circuitBreakerRegistry) {
         this.circuitBreakerRegistry = circuitBreakerRegistry;
-        this.mockFailureRate = mockFailureRate;
     }
 
     /**
@@ -76,10 +69,9 @@ public class WeatherApiClient {
     @CircuitBreaker(name = CIRCUIT_NAME, fallbackMethod = "queryTodayWeatherFallback")
     public String queryTodayWeather(String city) {
         // ↓↓↓ 演示用故障注入：真实项目里这里是一次 HTTP/RPC 调用，可能超时、限流或报错
-        if (city.toLowerCase().contains("fail")
-                || ThreadLocalRandom.current().nextDouble() < mockFailureRate) {
-            throw new BusinessException("模拟外部天气接口异常: 连接超时(city=" + city + ")");
-        }
+//        if (city.toLowerCase().contains("fail")) {
+//            throw new BusinessException("模拟外部天气接口异常: 连接超时(city=" + city + ")");
+//        }
 
         Random random = new Random(city.toLowerCase().hashCode());
         String condition = CONDITIONS[random.nextInt(CONDITIONS.length)];

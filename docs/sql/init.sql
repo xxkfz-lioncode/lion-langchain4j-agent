@@ -59,11 +59,13 @@ CREATE TABLE IF NOT EXISTS `chat_message` (
     `user_id`      BIGINT       NULL COMMENT '用户id(冗余自 memory_id, 便于按用户查历史)',
     `role`         VARCHAR(16)  NOT NULL COMMENT '消息角色: system/user/assistant/tool',
     `content`      TEXT         NULL COMMENT '消息文本(展示用; 纯工具调用等可能为空)',
+    `biz_id`       VARCHAR(64)  NULL COMMENT '业务追踪id(一次提问一个, 与 llm_call_log.biz_id 关联; system消息与无上下文写入的为NULL)',
     `message_json` LONGTEXT     NOT NULL COMMENT 'LangChain4j 消息完整 JSON(用于还原消息对象)',
     `create_time`  DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`),
     KEY `idx_memory` (`memory_id`, `id`),
-    KEY `idx_user` (`user_id`, `id`)
+    KEY `idx_user` (`user_id`, `id`),
+    KEY `idx_biz` (`biz_id`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='对话消息明细表';
 

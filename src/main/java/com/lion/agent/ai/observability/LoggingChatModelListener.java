@@ -112,6 +112,9 @@ public class LoggingChatModelListener implements ChatModelListener {
         log.debug("[LLM响应-完整消息] {}", response.aiMessage());
 
         saveAsync(buildSuccessLog(responseContext));
+        // 回调可能发生在 reactor 线程池上, 收尾清掉本线程的上下文, 防止线程复用串号;
+        // 工具循环的下一轮调用会由 MySqlChatMemoryStore.updateMessages 里的 rebind 重新接回
+        LlmCallContext.clear();
     }
 
     @Override
@@ -119,6 +122,7 @@ public class LoggingChatModelListener implements ChatModelListener {
         log.error("[LLM错误] {}", errorContext.error().getMessage(), errorContext.error());
 
         saveAsync(buildErrorLog(errorContext));
+        LlmCallContext.clear();
     }
 
     // ==================== 落库 ====================
