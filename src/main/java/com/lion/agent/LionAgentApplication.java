@@ -8,6 +8,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
  * Lion LangChain4j Agent 启动类
@@ -17,6 +18,7 @@ import org.springframework.core.env.Environment;
  * 敏感信息不写入 yml, 且 .env 已加入 .gitignore。
  */
 @Slf4j
+@EnableScheduling
 @SpringBootApplication
 public class LionAgentApplication {
 

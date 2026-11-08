@@ -129,6 +129,14 @@
             <version>1.0.0-beta4</version>
         </dependency>
 
+        <!-- SQL 解析与 AST 校验: 问数(SqlGuard)的核心依赖, 用于语法树级白名单/字段校验。
+             版本需 Java 17+; 与项目 Spring Boot 3.5 / Java 17 兼容 -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>5.2</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

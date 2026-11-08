@@ -59,6 +59,61 @@ const routes = [
         component: () => import('@/views/StructuredOutputView.vue'),
         meta: { title: '结构化输出', parentTitle: '智能分析', requiresAuth: true }
       },
+      {
+        path: 'data-query',
+        name: 'data-query',
+        component: () => import('@/views/DataChatView.vue'),
+        meta: { title: '问数对话', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // 数据模型(元数据只读浏览 + 手动刷新)
+        path: 'schema-model',
+        name: 'schema-model',
+        component: () => import('@/views/manage/SchemaModelView.vue'),
+        meta: { title: '数据模型', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // 订单数据(只读浏览)
+        path: 'data-orders',
+        name: 'data-orders',
+        component: () => import('@/views/manage/OrderDataView.vue'),
+        meta: { title: '订单数据', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // 问数日志(只读审计)
+        path: 'data-logs',
+        name: 'data-logs',
+        component: () => import('@/views/manage/QueryLogView.vue'),
+        meta: { title: '问数日志', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // 反馈记录(只读 + 处理动作)
+        path: 'data-feedback',
+        name: 'data-feedback',
+        component: () => import('@/views/manage/FeedbackManageView.vue'),
+        meta: { title: '反馈管理', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // 业务术语(增删改查)
+        path: 'term-manage',
+        name: 'term-manage',
+        component: () => import('@/views/manage/TermManageView.vue'),
+        meta: { title: '术语管理', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // 脱敏规则(增删改查)
+        path: 'mask-rule-manage',
+        name: 'mask-rule-manage',
+        component: () => import('@/views/manage/MaskRuleManageView.vue'),
+        meta: { title: '脱敏规则', parentTitle: '智能问数', requiresAuth: true }
+      },
+      {
+        // Few-shot 示例库(增删改查)
+        path: 'fewshot-manage',
+        name: 'fewshot-manage',
+        component: () => import('@/views/manage/FewshotManageView.vue'),
+        meta: { title: '示例库管理', parentTitle: '智能问数', requiresAuth: true }
+      },
       // 分类三: 系统管理
       {
         path: 'user',

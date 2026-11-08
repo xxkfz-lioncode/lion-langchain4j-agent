@@ -20,6 +20,20 @@ spring:
     url: "jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:lion_agent_4j}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
+    # 问数只读数据源: 独立账号 + 独立连接池。
+    # 所有 LLM 生成的 SQL 只能走这个数据源执行, 账号仅授予目标库 SELECT 权限,
+    # 从根上杜绝写操作 / DDL / 拖库(见 docs/text2sql-design.md §4.8)。
+    # 默认(骨架阶段): 复用主库账号, 保证开箱能跑;
+    # 生产环境必须创建只读账号并配置 DB_QUERY_RO_USERNAME / DB_QUERY_RO_PASSWORD,
+    #   GRANT SELECT ON lion_agent_4j.* TO 'lion_query_ro'@'%';
+    readonly:
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      jdbc-url: "jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:lion_agent_4j}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+      username: ${DB_QUERY_RO_USERNAME:${DB_USERNAME:root}}
+      password: ${DB_QUERY_RO_PASSWORD:${DB_PASSWORD:}}
+      hikari:
+        maximum-pool-size: ${DB_QUERY_RO_POOL_SIZE:5}
+        connection-init-sql: "SET SESSION TRANSACTION READ ONLY"
 
 mybatis-plus:
   configuration:
@@ -48,7 +62,10 @@ langchain4j:
       base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       model-name: ${QWEN_MODEL_NAME:qwen-plus}
       temperature: 0.7
-      max-tokens: 2048
+      # 思考类模型(qwen3.x max 等)生成慢, 默认 60s 必超时(HttpTimeoutException: Request cancelled);
+      # 且推理 token 计入 max_tokens, 2048 会被思考内容耗光导致 JSON 截断
+      timeout: 120s
+      max-tokens: 8192
       # 日志记录
       log-requests: true
       log-responses: true
@@ -58,7 +75,8 @@ langchain4j:
       base-url: ${QWEN_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       model-name: ${QWEN_MODEL_NAME:qwen-plus}
       temperature: 0.7
-      max-tokens: 2048
+      # 流式也统一放大; 流式本身不依赖 timeout(逐 token 返回), 但保持一致避免困惑
+      max-tokens: 8192
       log-requests: true
       log-responses: true
     # 向量化模型(Embedding): RAG 知识库使用, DashScope OpenAI 兼容 /embeddings 接口,
@@ -224,3 +242,37 @@ lion:
     # 工具白名单; 留空把服务端列出的工具全部暴露给 LLM
     # 自带演示 server 暴露: echo / add / now
     filter-tool-names:
+
+  # ---- 智能问数(Text-to-SQL) ----
+  # 详细设计见 docs/text2sql-design.md; 此处为骨架默认值, 可按需覆盖
+  text2sql:
+    # 总开关: false 时问数接口直接返回 503
+    enabled: true
+    # 元数据扫描与执行的目标库
+    database: ${DB_NAME:lion_agent_4j}
+    # 仅扫描表名以该前缀开头的表(留空 = 扫描全部非系统表)
+    scan-include-prefix: biz_
+    # 单条查询最大返回行数(超限截断并标记 truncated)
+    max-rows: 10000
+    # 未显式写 LIMIT 时自动追加的限额
+    default-limit: 1000
+    # 语句执行超时(秒)
+    query-timeout-seconds: 10
+    # EXPLAIN 预检: 预计扫描行数上限
+    max-explain-rows: 5000000
+    # Schema 召回数量
+    recall-top-k: 5
+    # Few-shot 召回数量
+    fewshot-top-k: 3
+    # 结果缓存 TTL(分钟); 骨架未接 Redis, 配置保留
+    cache-ttl-minutes: 10
+    # 每用户每分钟最大问数次数
+    rate-limit-per-minute: 10
+    # 元数据定时刷新 cron(默认每日 02:00)
+    schema-refresh-cron: "0 0 2 * * ?"
+    # 手动刷新是否需要管理员
+    refresh-require-admin: true
+    # 最多允许的 JOIN 数量
+    max-joins: 6
+    # 错误自愈最大重试次数
+    max-self-heal-retry: 2

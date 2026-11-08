@@ -39,6 +39,46 @@
             <span>AI Services 指南</span>
           </el-menu-item>
 
+          <!-- 智能问数: 一级分组, 含问数对话 + 表数据预览 -->
+          <el-sub-menu index="group-data-query">
+            <template #title>
+              <el-icon><DataBoard /></el-icon>
+              <span>智能问数</span>
+            </template>
+            <el-menu-item index="/data-query">
+              <el-icon><ChatDotRound /></el-icon>
+              <span>问数对话</span>
+            </el-menu-item>
+            <el-menu-item index="/schema-model">
+              <el-icon><Coin /></el-icon>
+              <span>数据模型</span>
+            </el-menu-item>
+            <el-menu-item index="/data-orders">
+              <el-icon><Tickets /></el-icon>
+              <span>订单数据</span>
+            </el-menu-item>
+            <el-menu-item index="/data-logs">
+              <el-icon><Document /></el-icon>
+              <span>问数日志</span>
+            </el-menu-item>
+            <el-menu-item index="/data-feedback">
+              <el-icon><ChatLineSquare /></el-icon>
+              <span>反馈管理</span>
+            </el-menu-item>
+            <el-menu-item index="/term-manage">
+              <el-icon><Collection /></el-icon>
+              <span>术语管理</span>
+            </el-menu-item>
+            <el-menu-item index="/mask-rule-manage">
+              <el-icon><Lock /></el-icon>
+              <span>脱敏规则</span>
+            </el-menu-item>
+            <el-menu-item index="/fewshot-manage">
+              <el-icon><Grid /></el-icon>
+              <span>示例库管理</span>
+            </el-menu-item>
+          </el-sub-menu>
+
           <!-- 分类一: 对话与知识 -->
           <el-sub-menu index="group-chat">
             <template #title>
@@ -192,6 +232,10 @@ import {
   DataLine,
   MagicStick,
   DataAnalysis,
+  DataBoard,
+  Grid,
+  Tickets,
+  Lock,
   Setting,
   User,
   Document,

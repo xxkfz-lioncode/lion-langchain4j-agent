@@ -1,6 +1,6 @@
 package com.lion.agent.ai.rag.util;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import cn.hutool.json.JSONUtil;
 import com.lion.agent.ai.rag.pojo.dto.MilvusConnectionDTO;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.ai.rag.pojo.vo.RagSegmentVO;
@@ -62,8 +62,6 @@ public class MilvusVectorInspector {
     private static final String FIELD_METADATA = "metadata";
     /** 集合字段名: 向量本体(FLOAT_VECTOR, 默认 1024 维) */
     private static final String FIELD_VECTOR = "vector";
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${langchain4j.milvus.host:127.0.0.1}")
     private String host;
@@ -269,7 +267,7 @@ public class MilvusVectorInspector {
             vo.setMetadata(meta);
             if (meta != null && !meta.isBlank()) {
                 try {
-                    Map<String, Object> map = objectMapper.readValue(meta, Map.class);
+                    Map<String, Object> map = JSONUtil.parseObj(meta);
                     vo.setDocId(str(map.get("docId")));
                     vo.setFileName(str(map.get("fileName")));
                 } catch (Exception e) {
