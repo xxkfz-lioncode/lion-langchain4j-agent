@@ -15,7 +15,8 @@ import java.util.Map;
  * <p>
  * 工作原理:
  * <ol>
- *   <li>启动时把每个标签对应的若干<b>典型例句</b>(见 {@link #EXAMPLES})用 EmbeddingModel 转成向量;</li>
+ *   <li>首次分类时把每个标签对应的若干<b>典型例句</b>(见 {@link #EXAMPLES})用 EmbeddingModel 转成向量
+ *       (懒加载: 启动期零 API 调用, 不产生模型费用; 示例向量初始化后缓存复用);</li>
  *   <li>分类时把待分类文本也转成向量, 与每个标签下的示例向量算相似度;</li>
  *   <li>按"均值/最大分加权"得到每个标签的总分, 过滤掉低于 {@code minScore} 的, 按 {@code maxResults} 截断后返回。</li>
  * </ol>
@@ -68,17 +69,38 @@ public class SentimentEmbeddingClassifier {
             )
     );
 
-    private final TextClassifier<Sentiment> classifier;
+    private final EmbeddingModel embeddingModel;
+
+    /** 懒加载分类器: 构造时会向量化全部示例句(远程 API 调用), 故延迟到首次分类时创建 */
+    private volatile TextClassifier<Sentiment> classifier;
 
     public SentimentEmbeddingClassifier(EmbeddingModel embeddingModel) {
-        // 默认构造器: maxResults=1, minScore=0, meanToMaxScoreRatio=0.5
-        this.classifier = new EmbeddingModelTextClassifier<>(embeddingModel, EXAMPLES);
-        // 如要更细粒度控制, 用全参构造器:
-        // new EmbeddingModelTextClassifier<>(embeddingModel, EXAMPLES, 3, 0.6, 0.5);
-        log.info("[情感分类-Embedding] 初始化完成, 各标签示例数: POSITIVE={}, NEUTRAL={}, NEGATIVE={}",
-                EXAMPLES.get(Sentiment.POSITIVE).size(),
-                EXAMPLES.get(Sentiment.NEUTRAL).size(),
-                EXAMPLES.get(Sentiment.NEGATIVE).size());
+        this.embeddingModel = embeddingModel;
+    }
+
+    /**
+     * 双重检查锁懒加载: 启动期零 embedding 调用(不烧 API 费用),
+     * 首次分类时才向量化示例句, 之后的分类只向量化待分类文本本身。
+     */
+    private TextClassifier<Sentiment> classifier() {
+        TextClassifier<Sentiment> c = classifier;
+        if (c == null) {
+            synchronized (this) {
+                if (classifier == null) {
+                    log.info("[情感分类-Embedding] 首次调用, 向量化示例句初始化分类器...");
+                    // 默认构造器: maxResults=1, minScore=0, meanToMaxScoreRatio=0.5
+                    // 如要更细粒度控制, 用全参构造器:
+                    // new EmbeddingModelTextClassifier<>(embeddingModel, EXAMPLES, 3, 0.6, 0.5);
+                    classifier = new EmbeddingModelTextClassifier<>(embeddingModel, EXAMPLES);
+                    log.info("[情感分类-Embedding] 初始化完成, 各标签示例数: POSITIVE={}, NEUTRAL={}, NEGATIVE={}",
+                            EXAMPLES.get(Sentiment.POSITIVE).size(),
+                            EXAMPLES.get(Sentiment.NEUTRAL).size(),
+                            EXAMPLES.get(Sentiment.NEGATIVE).size());
+                }
+                c = classifier;
+            }
+        }
+        return c;
     }
 
     /**
@@ -87,7 +109,7 @@ public class SentimentEmbeddingClassifier {
      * 可能返回 0 个、1 个或多个标签 —— 取决于 {@code maxResults} / {@code minScore} 阈值。
      */
     public List<Sentiment> classify(String text) {
-        return classifier.classify(text);
+        return classifier().classify(text);
     }
 
     /**
@@ -96,6 +118,6 @@ public class SentimentEmbeddingClassifier {
      * 输出形如: {@code { POSITIVE: 0.82, NEUTRAL: 0.41, NEGATIVE: 0.27 }}
      */
     public ClassificationResult<Sentiment> classifyWithScores(String text) {
-        return classifier.classifyWithScores(text);
+        return classifier().classifyWithScores(text);
     }
 }
