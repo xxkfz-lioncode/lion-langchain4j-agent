@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS `data_query_log` (
     `result_status`   VARCHAR(32)  NOT NULL DEFAULT '' COMMENT '结果状态: SUCCESS/EMPTY/TIMEOUT/ERROR',
     `error_message`   VARCHAR(1024) NOT NULL DEFAULT '' COMMENT '错误信息',
     `chart_type`      VARCHAR(16)  NOT NULL DEFAULT '' COMMENT '推断的图表类型',
+    `result_snapshot` MEDIUMTEXT   NULL COMMENT '结果快照JSON(脱敏后全量行, 供日志详情回溯)',
     `schema_version`  VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '使用的 schema 版本',
     `create_time`     DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`),
