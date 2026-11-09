@@ -21,133 +21,51 @@
         <span v-show="!collapsed" class="logo-title">Lion Agent</span>
       </div>
 
-      <el-scrollbar class="app-menu-scroll">
-        <el-menu
-          :default-active="activeMenu"
-          :collapse="collapsed"
-          :collapse-transition="false"
-          unique-opened
-          router
-          class="app-menu"
-        >
-          <el-menu-item index="/home">
-            <el-icon><HomeFilled /></el-icon>
-            <span>首页</span>
-          </el-menu-item>
-          <el-menu-item index="/ai-services">
-            <el-icon><SetUp /></el-icon>
-            <span>AI Services 指南</span>
-          </el-menu-item>
+      <!-- 菜单: 纯手写实现(替代 el-menu/el-sub-menu)。
+           背景: EP el-sub-menu 在分组开合重渲时存在 DOM 复用 bug, 会导致相邻分组标题图标丢失,
+           多种 workaround(结构包裹/动态 key 重建)均无效, 故整体重构为数据驱动的原生实现。
+           展开/折叠/高亮/折叠窄栏全部由下面的状态与样式控制, 不依赖 EP 的菜单 DOM 机制 -->
+      <nav class="app-menu">
+        <template v-for="m in MENU" :key="m.type === 'item' ? m.path : m.key">
+          <!-- 一级菜单项 -->
+          <div
+            v-if="m.type === 'item'"
+            class="menu-row"
+            :class="{ active: route.path === m.path }"
+            @click="router.push(m.path)"
+          >
+            <component :is="m.icon" class="menu-ico" />
+            <span v-show="!collapsed" class="menu-label">{{ m.label }}</span>
+          </div>
 
-          <!-- 智能问数: 一级分组, 含问数对话 + 表数据预览 -->
-          <el-sub-menu index="group-data-query">
-            <template #title>
-              <el-icon><DataBoard /></el-icon>
-              <span>智能问数</span>
-            </template>
-            <el-menu-item index="/data-query">
-              <el-icon><ChatDotRound /></el-icon>
-              <span>问数对话</span>
-            </el-menu-item>
-            <el-menu-item index="/schema-model">
-              <el-icon><Coin /></el-icon>
-              <span>数据模型</span>
-            </el-menu-item>
-            <el-menu-item index="/data-orders">
-              <el-icon><Tickets /></el-icon>
-              <span>订单数据</span>
-            </el-menu-item>
-            <el-menu-item index="/data-logs">
-              <el-icon><Document /></el-icon>
-              <span>问数日志</span>
-            </el-menu-item>
-            <el-menu-item index="/data-feedback">
-              <el-icon><ChatLineSquare /></el-icon>
-              <span>反馈管理</span>
-            </el-menu-item>
-            <el-menu-item index="/term-manage">
-              <el-icon><Collection /></el-icon>
-              <span>术语管理</span>
-            </el-menu-item>
-            <el-menu-item index="/mask-rule-manage">
-              <el-icon><Lock /></el-icon>
-              <span>脱敏规则</span>
-            </el-menu-item>
-            <el-menu-item index="/fewshot-manage">
-              <el-icon><Grid /></el-icon>
-              <span>示例库管理</span>
-            </el-menu-item>
-          </el-sub-menu>
-
-          <!-- 分类一: 对话与知识 -->
-          <el-sub-menu index="group-chat">
-            <template #title>
-              <el-icon><ChatLineSquare /></el-icon>
-              <span>对话与知识</span>
-            </template>
-            <el-menu-item index="/chat">
-              <el-icon><ChatDotRound /></el-icon>
-              <span>对话助手</span>
-            </el-menu-item>
-            <el-menu-item index="/rag">
-              <el-icon><Collection /></el-icon>
-              <span>RAG 知识库</span>
-            </el-menu-item>
-            <el-menu-item index="/vector">
-              <el-icon><Coin /></el-icon>
-              <span>向量库查询</span>
-            </el-menu-item>
-          </el-sub-menu>
-
-          <!-- 分类二: 智能分析 -->
-          <el-sub-menu index="group-analysis">
-            <template #title>
-              <el-icon><DataLine /></el-icon>
-              <span>智能分析</span>
-            </template>
-            <el-menu-item index="/sentiment">
-              <el-icon><MagicStick /></el-icon>
-              <span>情感分析</span>
-            </el-menu-item>
-            <el-menu-item index="/structured">
-              <el-icon><DataAnalysis /></el-icon>
-              <span>结构化输出</span>
-            </el-menu-item>
-          </el-sub-menu>
-
-          <!-- 分类三: 系统管理 -->
-          <el-sub-menu index="group-system">
-            <template #title>
-              <el-icon><Setting /></el-icon>
-              <span>系统管理</span>
-            </template>
-            <el-menu-item v-if="auth.isAdmin" index="/user">
-              <el-icon><User /></el-icon>
-              <span>用户管理</span>
-            </el-menu-item>
-            <el-menu-item index="/llm-log">
-              <el-icon><Odometer /></el-icon>
-              <span>LLM 调用日志</span>
-            </el-menu-item>
-            <el-menu-item index="/api-doc">
-              <el-icon><Document /></el-icon>
-              <span>接口文档</span>
-            </el-menu-item>
-          </el-sub-menu>
-
-          <!-- 分类四: 工具与协议 -->
-          <el-sub-menu index="group-tooling">
-            <template #title>
-              <el-icon><Connection /></el-icon>
-              <span>工具与协议</span>
-            </template>
-            <el-menu-item index="/mcp">
-              <el-icon><Tools /></el-icon>
-              <span>MCP 调试</span>
-            </el-menu-item>
-          </el-sub-menu>
-        </el-menu>
-      </el-scrollbar>
+          <!-- 分组(可展开/折叠, 单开) -->
+          <div v-else class="menu-group">
+            <div
+              class="menu-row group-head"
+              :class="{ active: isGroupActive(m), open: isOpen(m) }"
+              @click="toggleGroup(m)"
+            >
+              <component :is="m.icon" class="menu-ico" />
+              <span v-show="!collapsed" class="menu-label">{{ m.label }}</span>
+              <el-icon v-show="!collapsed" class="menu-arrow" :class="{ open: isOpen(m) }">
+                <ArrowDown />
+              </el-icon>
+            </div>
+            <div v-show="isOpen(m)" class="menu-sub">
+              <div
+                v-for="c in groupChildren(m)"
+                :key="c.path"
+                class="menu-row sub-row"
+                :class="{ active: route.path === c.path }"
+                @click="router.push(c.path)"
+              >
+                <component :is="c.icon" class="menu-ico" />
+                <span v-show="!collapsed" class="menu-label">{{ c.label }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </nav>
     </aside>
 
     <!-- 右侧: 顶栏 + 标签页 + 内容区 -->
@@ -262,7 +180,74 @@ const auth = useAuthStore()
 const HOME = '/home'
 const collapsed = ref(false)
 
-const activeMenu = computed(() => route.path)
+// ---- 菜单配置(数据驱动, 替代模板里手写的 el-menu-item/el-sub-menu) ----
+const MENU = [
+  { type: 'item', path: '/home', label: '首页', icon: HomeFilled },
+  { type: 'item', path: '/ai-services', label: 'AI Services 指南', icon: SetUp },
+  {
+    type: 'group', key: 'data-query', label: '智能问数', icon: DataBoard,
+    children: [
+      { path: '/data-query', label: '问数对话', icon: ChatDotRound },
+      { path: '/schema-model', label: '数据模型', icon: Coin },
+      { path: '/data-orders', label: '订单数据', icon: Tickets },
+      { path: '/data-logs', label: '问数日志', icon: Document },
+      { path: '/data-feedback', label: '反馈管理', icon: ChatLineSquare },
+      { path: '/term-manage', label: '术语管理', icon: Collection },
+      { path: '/mask-rule-manage', label: '脱敏规则', icon: Lock },
+      { path: '/fewshot-manage', label: '示例库管理', icon: Grid }
+    ]
+  },
+  {
+    type: 'group', key: 'chat', label: '对话与知识', icon: ChatLineSquare,
+    children: [
+      { path: '/chat', label: '对话助手', icon: ChatDotRound },
+      { path: '/rag', label: 'RAG 知识库', icon: Collection },
+      { path: '/vector', label: '向量库查询', icon: Coin }
+    ]
+  },
+  {
+    type: 'group', key: 'analysis', label: '智能分析', icon: DataLine,
+    children: [
+      { path: '/sentiment', label: '情感分析', icon: MagicStick },
+      { path: '/structured', label: '结构化输出', icon: DataAnalysis }
+    ]
+  },
+  {
+    type: 'group', key: 'system', label: '系统管理', icon: Setting,
+    children: [
+      { path: '/user', label: '用户管理', icon: User, adminOnly: true },
+      { path: '/llm-log', label: 'LLM 调用日志', icon: Odometer },
+      { path: '/api-doc', label: '接口文档', icon: Document }
+    ]
+  },
+  {
+    type: 'group', key: 'tooling', label: '工具与协议', icon: Connection,
+    children: [
+      { path: '/mcp', label: 'MCP 调试', icon: Tools }
+    ]
+  }
+]
+
+// 分组展开状态(单开, 等价于原 unique-opened); 默认展开当前路由所在分组
+const openGroup = ref('')
+const isOpen = (m) => openGroup.value === m.key
+function toggleGroup(m) {
+  openGroup.value = isOpen(m) ? '' : m.key
+}
+// 管理员可见性: adminOnly 子项仅管理员可见, 全部不可见时分组也不显示
+const groupChildren = (m) => m.children.filter((c) => !c.adminOnly || auth.isAdmin)
+const isGroupActive = (m) => groupChildren(m).some((c) => c.path === route.path)
+
+// 路由变化时自动展开所在分组(首次进入页面也能定位到)
+watch(
+  () => route.path,
+  (p) => {
+    const g = MENU.find((m) => m.type === 'group' && m.children.some((c) => c.path === p))
+    if (g) openGroup.value = g.key
+  },
+  { immediate: true }
+)
+
 const crumbs = computed(() => {
   const meta = route.meta || {}
   const arr = []
@@ -390,38 +375,111 @@ onMounted(async () => {
   letter-spacing: 1px;
 }
 
-.app-menu-scroll {
-  flex: 1;
-}
-
+/* 菜单(手写实现) */
 .app-menu {
-  border-right: none;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 0;
 }
 
-::deep(.app-menu .el-menu-item.is-active) {
-  color: #2d4a8f;
-  background: #eef2fb;
+.menu-row {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  margin: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #606266;
+  font-size: 14px;
+  user-select: none;
+  white-space: nowrap;
 }
 
-::deep(.app-menu .el-menu-item:hover),
-::deep(.app-menu .el-sub-menu__title:hover) {
+.menu-row:hover {
   background: #f5f7fa;
 }
 
-/* 分组标题: 字号略小、颜色略淡, 与叶子菜单区分层级 */
-::deep(.app-menu .el-sub-menu__title) {
+.menu-row.active {
+  color: #2d4a8f;
+  background: #eef2fb;
+  font-weight: 500;
+}
+
+/* 显式像素尺寸: 图标组件 svg 默认 width=1em(相对字号), 一旦字号继承链异常就撑满整行,
+   挤掉文字标签并纵向溢出行高互相叠压; 固定 px 后与字号彻底解耦 */
+.menu-ico {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.menu-label {
+  margin-left: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 分组标题: 层级略弱于叶子菜单的激活态 */
+.menu-row.group-head {
   color: #606266;
   font-weight: 500;
 }
 
-/* 分组内有激活项时, 分组标题也高亮, 便于定位 */
-::deep(.app-menu .el-sub-menu.is-active > .el-sub-menu__title) {
-  color: #2d4a8f;
+.menu-row.group-head .menu-ico {
+  font-size: 17px;
 }
 
-/* 次级菜单项缩进后左侧加一条细线, 强化层级关系 */
-::deep(.app-menu .el-menu .el-menu-item) {
-  min-width: auto;
+.menu-arrow {
+  margin-left: auto;
+  width: 12px;
+  height: 12px;
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.menu-arrow.open {
+  transform: rotate(180deg);
+}
+
+/* 次级菜单: 缩进 + 左侧细线, 强化层级 */
+.menu-sub .sub-row {
+  padding-left: 42px;
+  height: 40px;
+  position: relative;
+}
+
+.menu-sub .sub-row .menu-ico {
+  width: 15px;
+  height: 15px;
+}
+
+.menu-sub .sub-row.active::before {
+  content: '';
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: #2d4a8f;
+}
+
+/* 折叠窄栏: 仅图标, 居中 */
+.app-aside.collapsed .menu-row {
+  justify-content: center;
+  padding: 0;
+  margin: 2px 10px;
+}
+
+.app-aside.collapsed .menu-sub .sub-row {
+  padding-left: 0;
+}
+
+.app-aside.collapsed .menu-sub .sub-row.active::before {
+  left: 10px;
 }
 
 /* 右侧主区域 */
@@ -515,7 +573,7 @@ onMounted(async () => {
   user-select: none;
   background: #fff;
   color: #606266;
-  border: 1px solid #e4e7ed;
+  border: 1px solid #e4e7eb;
 }
 
 .tab-item.active {
