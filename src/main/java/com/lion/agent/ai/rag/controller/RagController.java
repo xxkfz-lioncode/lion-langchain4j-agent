@@ -27,14 +27,18 @@ import java.util.List;
 /**
  * RAG 知识库接口(登录后可用, 位于 /api/** 自动纳入 Sa-Token 登录校验)
  * <p>
- * 1. 上传知识文档:    POST /api/rag/upload (multipart, 支持 .pdf/.txt/.md, 上限 20MB, 追加式入库)
- * 2. 知识库问答:      POST /api/rag/chat  body={"question":"你的问题"}
- * 3. 文档列表:        GET  /api/rag/documents (按上传时间倒序, 供前端文件列表展示)
- * 4. 删除单个文档:    DELETE /api/rag/documents/{id} (同时删除该文件全部向量)
- * 5. 查看片段数:      GET  /api/rag/size
- * 6. 切分方式列表:    GET  /api/rag/splitters (前端上传时下拉框数据源)
+ * 上传与解析分两阶段(上传零模型成本, 解析由用户显式触发):
+ * <ol>
+ *   <li>上传文档(仅保存):       POST   /api/rag/upload (multipart, 支持 .pdf/.txt/.md, 上限 20MB)</li>
+ *   <li>解析文档(切分+向量化):  POST   /api/rag/documents/{id}/parse (可选切分参数; 已解析文档重复调用即重新解析)</li>
+ *   <li>知识库问答:             POST   /api/rag/chat  body={"question":"你的问题"}</li>
+ *   <li>文档列表:               GET    /api/rag/documents (按上传时间倒序, 含解析状态)</li>
+ *   <li>删除单个文档:           DELETE /api/rag/documents/{id} (同时删除该文件全部向量)</li>
+ *   <li>查看片段数:             GET    /api/rag/size</li>
+ *   <li>切分方式列表:           GET    /api/rag/splitters (解析时下拉框数据源)</li>
+ * </ol>
  */
-@Tag(name = "RAG 知识库", description = "文档上传入库 / 知识库问答 / 文档管理(需登录)")
+@Tag(name = "RAG 知识库", description = "文档上传/解析入库 / 知识库问答 / 文档管理(需登录)")
 @RestController
 @RequestMapping("/api/rag")
 public class RagController {
@@ -46,27 +50,17 @@ public class RagController {
     }
 
     /**
-     * 上传知识文档并追加入库(多个文档共存, 不替换旧知识)
+     * 上传知识文档(仅保存, 不解析不产生模型费用)
      * <p>
-     * 切分方式可由前端指定(见 GET /api/rag/splitters): splitterType 选方式,
-     * segmentSize / overlap / pattern 覆盖默认参数, 不传则用该方式的默认值。
+     * 切分方式在「解析」时指定: POST /api/rag/documents/{id}/parse。
      */
-    @Operation(summary = "上传知识文档并入库",
-            description = "multipart 上传, 支持 .pdf/.txt/.md, 上限 20MB, 追加式入库(不替换旧知识); "
-                    + "切分方式由 splitterType 等可选参数指定, 不传用默认值")
+    @Operation(summary = "上传知识文档(仅保存)",
+            description = "multipart 上传, 支持 .pdf/.txt/.md, 上限 20MB; 仅保存文件与元数据(状态=待解析), "
+                    + "需再调用解析接口才会切分向量化入库")
     @PostMapping("/upload")
-    public R<RagUploadVO> upload(
+    public R<RagDocumentVO> upload(
             @Parameter(description = "知识文档文件(.pdf/.txt/.md)", required = true)
-            @RequestParam("file") MultipartFile file,
-            @Parameter(description = "切分方式, 见 GET /api/rag/splitters", example = "PARAGRAPH")
-            @RequestParam(value = "splitterType", required = false) String splitterType,
-            @Parameter(description = "片段大小(字符数)", example = "500")
-            @RequestParam(value = "segmentSize", required = false) Integer segmentSize,
-            @Parameter(description = "相邻片段重叠字符数", example = "80")
-            @RequestParam(value = "overlap", required = false) Integer overlap,
-            @Parameter(description = "自定义切分正则(仅 REGEX 方式需要)")
-            @RequestParam(value = "pattern", required = false) String pattern)
-            throws Exception {
+            @RequestParam("file") MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException("请选择要上传的文件");
         }
@@ -79,7 +73,37 @@ public class RagController {
         if (!supported) {
             throw new BusinessException("仅支持 .txt / .md / .pdf 格式的知识文档");
         }
-        return R.ok(ragService.ingestUpload(name, file.getSize(), file.getBytes(),
+        byte[] data;
+        try {
+            data = file.getBytes();
+        } catch (Exception e) {
+            throw new BusinessException("读取上传文件失败: " + e.getMessage());
+        }
+        return R.ok(ragService.uploadDocument(name, file.getSize(), data));
+    }
+
+    /**
+     * 解析文档入库(切分 + 向量化, 用户显式触发; 对已解析文档重复调用即重新解析)
+     * <p>
+     * 切分方式可由前端指定(见 GET /api/rag/splitters): splitterType 选方式,
+     * segmentSize / overlap / pattern 覆盖默认参数, 不传则用该方式的默认值。
+     */
+    @Operation(summary = "解析文档入库",
+            description = "对已上传(待解析)文档执行切分+向量化入库; 对已解析文档重复调用 = 重新解析"
+                    + "(先清空旧向量再按新配置重建); 切分方式由 splitterType 等可选参数指定, 不传用默认值")
+    @PostMapping("/documents/{id}/parse")
+    public R<RagUploadVO> parse(
+            @Parameter(description = "文档id", required = true, example = "1")
+            @PathVariable("id") Long id,
+            @Parameter(description = "切分方式, 见 GET /api/rag/splitters", example = "PARAGRAPH")
+            @RequestParam(value = "splitterType", required = false) String splitterType,
+            @Parameter(description = "片段大小(字符数)", example = "500")
+            @RequestParam(value = "segmentSize", required = false) Integer segmentSize,
+            @Parameter(description = "相邻片段重叠字符数", example = "80")
+            @RequestParam(value = "overlap", required = false) Integer overlap,
+            @Parameter(description = "自定义切分正则(仅 REGEX 方式需要)")
+            @RequestParam(value = "pattern", required = false) String pattern) {
+        return R.ok(ragService.parseDocument(id,
                 SplitterConfig.of(splitterType, segmentSize, overlap, pattern)));
     }
 

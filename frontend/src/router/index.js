@@ -21,24 +21,32 @@ const routes = [
         component: () => import('@/views/HomeView.vue'),
         meta: { title: '首页', requiresAuth: true }
       },
-      // 分类一: 对话与知识
+      // 对话与知识相关页面
       {
         path: 'chat',
         name: 'chat',
         component: () => import('@/views/ChatView.vue'),
-        meta: { title: '对话助手', parentTitle: '对话与知识', requiresAuth: true }
+        meta: { title: '对话助手', requiresAuth: true }
       },
       {
+        // 知识库管理(全宽表格: 上传/解析/删除文档)
         path: 'rag',
         name: 'rag',
-        component: () => import('@/views/RagView.vue'),
-        meta: { title: 'RAG 知识库', parentTitle: '对话与知识', requiresAuth: true }
+        component: () => import('@/views/RagManageView.vue'),
+        meta: { title: '知识库管理', parentTitle: '知识库', requiresAuth: true }
+      },
+      {
+        // 知识库问答(纯聊天界面, 依据已入库文档回答)
+        path: 'rag-chat',
+        name: 'rag-chat',
+        component: () => import('@/views/RagChatView.vue'),
+        meta: { title: '知识问答', parentTitle: '知识库', requiresAuth: true }
       },
       {
         path: 'vector',
         name: 'vector',
         component: () => import('@/views/VectorView.vue'),
-        meta: { title: '向量库查询', parentTitle: '对话与知识', requiresAuth: true }
+        meta: { title: '向量库查询', parentTitle: '知识库', requiresAuth: true }
       },
       {
         path: 'ai-services',

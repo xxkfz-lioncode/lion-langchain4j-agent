@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS `rag_document` (
     `splitter_pattern` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '正则切分的正则(仅 regex 方式有值)',
     `file_path`     VARCHAR(512) NOT NULL DEFAULT '' COMMENT '上传文件保存路径(相对运行目录, 如 upload/1_demo.pdf)',
     `segment_count` INT          NOT NULL DEFAULT 0 COMMENT '入库片段数(向量条数)',
-    `status`        TINYINT      NOT NULL DEFAULT 1 COMMENT '状态: 1 成功 / 0 失败',
+    `status`        TINYINT      NOT NULL DEFAULT 0 COMMENT '解析状态: 1 已解析(已入库) / 0 待解析(仅上传)',
     `create_time`   DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
     `update_time`   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),

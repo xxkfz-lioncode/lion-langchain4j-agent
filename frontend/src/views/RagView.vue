@@ -29,14 +29,14 @@
             :loading="uploading"
             :icon="UploadFilled"
           >
-            {{ uploading ? '正在上传并入库...' : '上传文档' }}
+            {{ uploading ? '正在上传...' : '上传文档' }}
           </el-button>
           <template #tip>
-            <div class="upload-tip">支持 .txt / .md / .pdf, 单文件 ≤ 20MB, 可多选</div>
+            <div class="upload-tip">支持 .txt / .md / .pdf, 单文件 ≤ 20MB, 可多选 · 仅保存文件, 点击列表中的「解析」后才会入库</div>
           </template>
         </el-upload>
 
-        <!-- 切分方式: 只影响之后上传的文档, 选项由后端 GET /api/rag/splitters 下发 -->
+        <!-- 切分方式: 解析文档时使用的切分参数, 选项由后端 GET /api/rag/splitters 下发 -->
         <div v-if="splitters.length" class="split-box">
           <div class="split-row">
             <span class="split-label">切分方式</span>
@@ -109,13 +109,55 @@
           </template>
         </div>
 
-        <!-- 文件列表: 名称 / 类型 / 大小 / 片段数 / 切分方式 / 上传时间 -->
+        <!-- 文件列表: 名称 / 类型 / 大小 / 状态(待解析/已解析) / 片段数 / 切分方式 / 上传时间 -->
         <div class="file-sec-title">
-          文件列表
+          <el-checkbox
+            v-if="files.length"
+            class="select-all"
+            :model-value="allSelected"
+            :indeterminate="someSelected && !allSelected"
+            @change="toggleAll"
+          >
+            文件列表
+          </el-checkbox>
+          <template v-else>文件列表</template>
           <span class="file-count">{{ files.length ? `共 ${files.length} 个` : '' }}</span>
         </div>
+        <!-- 批量操作栏: 勾选文档后出现(生产知识库产品的标准交互: 勾选 → 批量解析/删除) -->
+        <div v-if="someSelected" class="batch-bar">
+          <span class="batch-count">已选 {{ selectedIds.length }} 项</span>
+          <div class="batch-ops">
+            <el-button
+              size="small"
+              type="primary"
+              :loading="batchParsing"
+              @click="handleBatchParse"
+            >
+              解析所选
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              :disabled="batchParsing"
+              @click="handleBatchDelete"
+            >
+              删除所选
+            </el-button>
+          </div>
+        </div>
         <template v-if="files.length">
-          <div v-for="f in files" :key="f.id" class="file-item">
+          <div
+            v-for="f in files"
+            :key="f.id"
+            class="file-item"
+            :class="{ selected: selectedIds.includes(f.id) }"
+          >
+            <el-checkbox
+              class="file-check"
+              :model-value="selectedIds.includes(f.id)"
+              @change="toggleSelect(f)"
+            />
             <el-icon class="file-icon" :class="'type-' + (f.fileType || 'txt')">
               <Document />
             </el-icon>
@@ -124,21 +166,36 @@
               <div class="file-meta">
                 <span class="meta-size">{{ f.sizeText }}</span>
                 ·
-                <span class="meta-seg">{{ f.segmentCount }} 片段</span>
-                ·
-                <span class="meta-split" :title="f.splitterTitle">{{ f.splitterText }}</span>
-                ·
+                <span v-if="f.status === 0" class="meta-status pending">待解析</span>
+                <template v-else>
+                  <span class="meta-seg">{{ f.segmentCount }} 片段</span>
+                  ·
+                  <span class="meta-split" :title="f.splitterTitle">{{ f.splitterText }}</span>
+                  ·
+                </template>
                 <span class="meta-time">{{ f.timeText }}</span>
               </div>
             </div>
-            <el-tooltip content="删除文档及其向量" placement="top">
-              <el-icon class="file-del" @click="handleDelete(f)"><Close /></el-icon>
-            </el-tooltip>
+            <div class="file-actions">
+              <el-button
+                size="small"
+                :type="f.status === 0 ? 'primary' : 'default'"
+                plain
+                :loading="parsingId === f.id"
+                :disabled="batchParsing && parsingId !== f.id"
+                @click="handleParse(f)"
+              >
+                {{ f.status === 0 ? '解析' : '重新解析' }}
+              </el-button>
+              <el-tooltip content="删除文档及其向量" placement="top">
+                <el-icon class="file-del" @click="handleDelete(f)"><Close /></el-icon>
+              </el-tooltip>
+            </div>
           </div>
         </template>
         <el-empty
           v-else
-          description="暂无文档"
+          description="暂无文档, 上传后勾选并点「解析所选」入库"
           :image-size="56"
           class="file-empty"
         />
@@ -151,9 +208,10 @@
           使用说明
         </div>
         <ol class="kb-tips-list">
-          <li>上传前可自选切分方式(默认递归切分), 上传后自动切分、向量化入库;</li>
+          <li>上传仅保存文件(不产生解析费用), 勾选文档后点「解析所选」(或单条「解析」)才会切分、向量化入库;</li>
+          <li>解析时按上方所选切分方式执行, 已解析文档可「重新解析」(换切分策略自动替换旧片段);</li>
           <li>追加式入库, 多份文档<b>共存</b>于知识库, 可单独删除;</li>
-          <li>提问前请先上传资料, 回答将仅依据库内内容生成。</li>
+          <li>提问前请先解析资料, 回答将仅依据库内内容生成。</li>
         </ol>
       </div>
     </aside>
@@ -199,7 +257,7 @@
           <div class="qa-empty-icon"><el-icon><Reading /></el-icon></div>
           <div class="qa-empty-title">知识库问答</div>
           <div class="qa-empty-desc">
-            {{ segments ? '在下方输入你的问题, 我会依据文档内容回答' : '先上传一份知识文档, 再向我提问' }}
+            {{ segments ? '在下方输入你的问题, 我会依据文档内容回答' : '先上传并解析一份知识文档, 再向我提问' }}
           </div>
         </div>
       </main>
@@ -243,7 +301,7 @@ import {
 } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { uploadRagFile, ragChat, getRagDocuments, deleteRagDocument, getRagSplitters } from '@/api/rag'
+import { uploadRagFile, parseRagDocument, ragChat, getRagDocuments, deleteRagDocument, getRagSplitters } from '@/api/rag'
 
 const listRef = ref()
 const input = ref('')
@@ -384,19 +442,19 @@ function beforeUpload(file) {
 
 let uploadCount = 0
 
-/** 自定义上传: 走统一 request 封装(自动携带 satoken), 失败由拦截器弹出错误; 支持多文件并行 */
+/** 自定义上传: 仅保存文件不解析(切分入库由「解析」按钮触发); 失败由拦截器弹出错误; 支持多文件并行 */
 async function handleUpload({ file, onSuccess, onError }) {
   uploadCount++
   uploading.value = true
   try {
-    saveSplitPreference()
-    // 携带当前选择的切分方式(未展开自定义参数时由后端取该方式默认值)
-    const data = await uploadRagFile(file, splitOptions())
-    // 以服务端落库结果为准刷新列表(文件名/大小/时间/片段数/切分方式均来自 rag_document)
+    const data = await uploadRagFile(file)
+    // 以服务端落库结果为准刷新列表(含"待解析"状态)
     await loadDocuments()
-    ElMessage.success(
-      `「${data.fileName}」导入成功, ${splitterLabel(data)} 切分入库 ${data.segments} 个片段`
-    )
+    // 生产级引导: 上传成功自动勾选新文档, 批量操作栏立刻出现"解析所选"入口
+    if (data?.id && !selectedIds.value.includes(data.id)) {
+      selectedIds.value.push(data.id)
+    }
+    ElMessage.success(`「${data.fileName}」已上传, 点击「解析所选」入库`)
     onSuccess(data)
   } catch (e) {
     onError(e)
@@ -407,6 +465,154 @@ async function handleUpload({ file, onSuccess, onError }) {
       uploading.value = false
     }
   }
+}
+
+// ---------------- 解析(切分 + 向量化入库) ----------------
+
+/** 正在解析的文档 id(行内按钮 loading) */
+const parsingId = ref(null)
+
+/** 批量解析进行中(期间禁用删除等操作) */
+const batchParsing = ref(false)
+
+/** 勾选的文档 id 列表 */
+const selectedIds = ref([])
+
+const someSelected = computed(() => selectedIds.value.length > 0)
+const allSelected = computed(
+  () => files.value.length > 0 && selectedIds.value.length === files.value.length
+)
+
+/** 勾选/取消单个文档 */
+function toggleSelect(f) {
+  const idx = selectedIds.value.indexOf(f.id)
+  if (idx >= 0) selectedIds.value.splice(idx, 1)
+  else selectedIds.value.push(f.id)
+}
+
+/** 全选/全不选 */
+function toggleAll(checked) {
+  selectedIds.value = checked ? files.value.map((f) => f.id) : []
+}
+
+/** 刷新列表后剔除已不存在的勾选项 */
+function pruneSelection() {
+  const ids = new Set(files.value.map((f) => f.id))
+  selectedIds.value = selectedIds.value.filter((id) => ids.has(id))
+}
+
+/**
+ * 解析/重新解析文档: 按顶部面板当前选择的切分方式执行。
+ * 对已解析文档会先清空旧向量再按新配置重建(重新解析有二次确认)。
+ */
+async function handleParse(f) {
+  const isReParse = f.status === 1
+  if (isReParse) {
+    try {
+      await ElMessageBox.confirm(
+        `确定重新解析「${f.fileName}」吗? 其现有 ${f.segmentCount || 0} 个片段将被清除, 按当前切分方式重建。`,
+        '重新解析',
+        { type: 'warning', confirmButtonText: '重新解析', cancelButtonText: '取消' }
+      )
+    } catch (e) {
+      return // 用户取消
+    }
+  }
+  parsingId.value = f.id
+  try {
+    saveSplitPreference()
+    // 未展开自定义参数时只传方式, 其余由后端取该方式默认值
+    const data = await parseRagDocument(f.id, splitOptions())
+    await loadDocuments()
+    pruneSelection()
+    ElMessage.success(
+      `「${data.fileName}」解析完成, ${splitterLabel(data)} 切分入库 ${data.segments} 个片段`
+    )
+  } catch (e) {
+    ElMessage.error('解析失败: ' + (e.message || '未知错误'))
+  } finally {
+    parsingId.value = null
+  }
+}
+
+/**
+ * 批量解析: 对勾选的文档逐个按当前切分方式解析(串行执行, 避免并发打满 embedding 限流)。
+ * 含已解析文档时先统一确认"重新解析会清掉旧片段"。
+ */
+async function handleBatchParse() {
+  const targets = files.value.filter((f) => selectedIds.value.includes(f.id))
+  if (!targets.length) return
+  const reParseCount = targets.filter((f) => f.status === 1).length
+  if (reParseCount > 0) {
+    try {
+      await ElMessageBox.confirm(
+        `所选 ${targets.length} 个文档中有 ${reParseCount} 个已解析过, 重新解析将清除其现有片段并按当前切分方式重建。继续吗?`,
+        '批量解析',
+        { type: 'warning', confirmButtonText: '开始解析', cancelButtonText: '取消' }
+      )
+    } catch (e) {
+      return // 用户取消
+    }
+  }
+  batchParsing.value = true
+  saveSplitPreference()
+  let ok = 0
+  let fail = 0
+  try {
+    for (const f of targets) {
+      parsingId.value = f.id
+      try {
+        const data = await parseRagDocument(f.id, splitOptions())
+        ok++
+        ElMessage.success(`「${data.fileName}」解析完成, 入库 ${data.segments} 个片段`)
+      } catch (e) {
+        fail++
+        ElMessage.error(`「${f.fileName}」解析失败: ${e.message || '未知错误'}`)
+      }
+    }
+  } finally {
+    parsingId.value = null
+    batchParsing.value = false
+    await loadDocuments()
+    pruneSelection()
+  }
+  if (ok > 0 && fail === 0) {
+    ElMessage.success(`批量解析完成: ${ok} 个文档已入库`)
+  } else if (fail > 0) {
+    ElMessage.warning(`批量解析结束: 成功 ${ok} 个, 失败 ${fail} 个(失败的可单独重试)`)
+  }
+}
+
+/** 批量删除勾选文档(含其向量), 统一确认后逐个执行 */
+async function handleBatchDelete() {
+  const targets = files.value.filter((f) => selectedIds.value.includes(f.id))
+  if (!targets.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除所选 ${targets.length} 个文档吗? 共 ${targets.reduce((s, f) => s + (f.segmentCount || 0), 0)} 个片段将从知识库一并移除。`,
+      '批量删除',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch (e) {
+    return // 用户取消
+  }
+  batchParsing.value = true
+  let fail = 0
+  try {
+    for (const f of targets) {
+      try {
+        await deleteRagDocument(f.id)
+      } catch (e) {
+        fail++
+        ElMessage.error(`「${f.fileName}」删除失败: ${e.message || '未知错误'}`)
+      }
+    }
+  } finally {
+    batchParsing.value = false
+    await loadDocuments()
+    pruneSelection()
+  }
+  if (fail === 0) ElMessage.success('所选文档已删除')
 }
 
 /** 切分方式编码 → 短名(优先用后端下发的短名, 接口不可用退回编码) */
@@ -448,6 +654,7 @@ async function handleDelete(f) {
     await deleteRagDocument(f.id)
     ElMessage.success(`「${f.fileName}」已删除`)
     await loadDocuments()
+    pruneSelection()
   } catch (e) {
     ElMessage.error('删除失败: ' + (e.message || '未知错误'))
   }
@@ -459,7 +666,12 @@ async function handleSend() {
   const text = input.value.trim()
   if (!text || loading.value) return
   if (!segments.value) {
-    ElMessage.warning('知识库还是空的, 请先上传一份文档')
+    const hasUnparsed = files.value.some((f) => f.status === 0)
+    ElMessage.warning(
+      hasUnparsed
+        ? '知识库中还有待解析的文档, 请先点击「解析」入库'
+        : '知识库还是空的, 请先上传并解析一份文档'
+    )
     return
   }
 
@@ -678,6 +890,52 @@ onMounted(async () => {
   border-radius: 8px;
   background: #f8f9fb;
   margin-bottom: 8px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.file-item.selected {
+  background: #eef4ff;
+  box-shadow: inset 0 0 0 1px #b8d0fb;
+}
+
+.file-check {
+  flex-shrink: 0;
+  height: auto;
+}
+
+/* 批量操作栏: 勾选文档后出现在列表上方 */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: #eef4ff;
+  border: 1px solid #d3e3fd;
+}
+
+.batch-count {
+  font-size: 13px;
+  color: #2d6cdf;
+  font-weight: 600;
+}
+
+.batch-ops {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.select-all {
+  height: auto;
+}
+
+.select-all :deep(.el-checkbox__label) {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
 }
 
 .file-icon {
@@ -714,6 +972,26 @@ onMounted(async () => {
 
 .file-del:hover {
   color: #f56c6c;
+}
+
+/* 行内操作区: 解析/重新解析按钮 + 删除图标 */
+.file-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* 待解析状态标记 */
+.meta-status {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.meta-status.pending {
+  color: #b8860b;
+  background: #fdf3dd;
 }
 
 /* 文件类型图标配色: pdf 红 / txt 绿 / md 蓝 */

@@ -25,8 +25,11 @@ public class RagDocumentVO {
     /** 上传文件保存路径(相对运行目录, 如 upload/1_demo.pdf) */
     private String filePath;
 
-    /** 入库片段数(向量条数) */
+    /** 入库片段数(向量条数; 待解析文档为 0) */
     private Integer segmentCount;
+
+    /** 解析状态: 1 已解析(已入库) / 0 待解析(仅上传) */
+    private Integer status;
 
     /** 切分方式编码(见 SplitterType, 如 recursive/paragraph/regex) */
     private String splitterType;

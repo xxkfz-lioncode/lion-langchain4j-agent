@@ -48,7 +48,7 @@ public class RagDocumentEntity {
     /** 入库片段数(向量条数) */
     private Integer segmentCount;
 
-    /** 状态: 1 成功 / 0 失败 */
+    /** 解析状态: 1 已解析(已入库) / 0 待解析(仅上传, 未切分向量化) */
     private Integer status;
 
     /** 上传时间(数据库自动维护) */

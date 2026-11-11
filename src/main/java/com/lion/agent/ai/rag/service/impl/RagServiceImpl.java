@@ -45,13 +45,15 @@ import java.util.Locale;
 /**
  * RAG 知识库服务实现
  * <p>
- * 链路(与官方模板一致):
- * 1. 加载文档: {@link FileSystemDocumentLoader} + 解析器(PDF 用 ApachePdfBoxDocumentParser, 纯文本直接读取);
- * 2. 切分: 支持多种方式(递归/段落/句子/按行/按词/字符/正则, 见 {@link SplitterType}), 参数由
- *    {@link SplitterConfig} 传入, 经 {@link DocumentSplitterFactory} 校验后构建切分器, 默认递归 300/50;
- * 3. 向量化入库: 手动分片 → 分批(≤10 条/批, DashScope text-embedding-v3 单请求上限)调 {@link EmbeddingModel#embedAll}
+ * 链路(上传与解析解耦, 上传阶段零模型调用):
+ * 1. 上传: 仅保存原始文件(upload 目录) + 落 rag_document(status=待解析), 不产生任何模型费用;
+ * 2. 解析(用户显式触发): 加载已存文件({@link FileSystemDocumentLoader}, PDF 用 ApachePdfBoxDocumentParser)
+ *    → 切分(支持多种方式, 见 {@link SplitterType}, 参数由 {@link SplitterConfig} 传入,
+ *    经 {@link DocumentSplitterFactory} 校验后构建切分器, 默认递归 300/50)
+ *    → 分批(≤10 条/批, DashScope text-embedding-v3 单请求上限)调 {@link EmbeddingModel#embedAll}
  *    → 写入向量库(避开 EmbeddingStoreIngestor 整篇一次性 embedAll 的 batch size 限制);
- * 4. 问答: {@link EmbeddingStoreContentRetriever} 检索 Top-N 相关片段(低于 minScore 过滤) → 拼入提示词 → 千问作答。
+ *    已解析文档可重新解析(先清旧向量再按新配置重建);
+ * 3. 问答: {@link EmbeddingStoreContentRetriever} 检索 Top-N 相关片段(低于 minScore 过滤) → 拼入提示词 → 千问作答。
  * <p>
  * 说明:
  * - 向量化模型 = DashScope text-embedding-v3(由 application.yml embedding-model 配置自动装配);
@@ -110,8 +112,7 @@ public class RagServiceImpl implements RagService {
     }
 
     @Override
-    public RagUploadVO ingestUpload(String fileName, long fileSize, byte[] data, SplitterConfig splitConfig)
-            throws Exception {
+    public RagDocumentVO uploadDocument(String fileName, long fileSize, byte[] data) {
         if (fileName == null || fileName.isBlank()) {
             throw new BusinessException("文件名不能为空");
         }
@@ -120,61 +121,100 @@ public class RagServiceImpl implements RagService {
         }
         String type = fileTypeOf(fileName);
 
-        // 0. 先解析切分参数(非法参数直接报错, 不落库、不写文件)
-        ResolvedSplitter resolved = splitterFactory.resolve(splitConfig);
-
-        // 1. 落 rag_document 元数据, 拿 docId(同时作为向量片段标识与上传文件命名前缀)
+        // 1. 落 rag_document 元数据: 状态=待解析(0), 片段数 0, 切分方式留空(解析时才指定)
         RagDocumentEntity entity = new RagDocumentEntity();
         entity.setFileName(fileName);
         entity.setFileSize(fileSize);
         entity.setFileType(type);
         entity.setSegmentCount(0);
-        entity.setStatus(1);
-        // 记录本次切分方案, 列表展示与后续重切分都可追溯
-        entity.setSplitterType(resolved.type().getCode());
-        entity.setSegmentSize(resolved.segmentSize());
-        entity.setOverlapSize(resolved.overlap());
-        entity.setSplitterPattern(resolved.pattern() == null ? "" : resolved.pattern());
+        entity.setStatus(0);
         ragDocumentMapper.insert(entity);
         Long docId = entity.getId();
 
-        String storedPath = null;
         try {
-            // 2. 原始文件保存到 upload 目录(PDF 解析直接复用该文件, 不再临时落盘)
-            storedPath = saveUploadFile(fileName, data, docId);
+            // 2. 原始文件保存到 upload 目录(解析阶段直接读取该文件)
+            String storedPath = saveUploadFile(fileName, data, docId);
             entity.setFilePath(storedPath);
+            ragDocumentMapper.updateById(entity);
+            log.info("文档[{}]已上传(仅保存, 待解析): id={}, 保存至 {}", fileName, docId, storedPath);
+            return toVO(entity);
+        } catch (Exception e) {
+            // 失败回滚: 删元数据记录 + 删已保存文件(此阶段无向量, 无需清理)
+            ragDocumentMapper.deleteById(docId);
+            throw new BusinessException("文件上传失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+        }
+    }
 
-            // 3. 解析文档内容
-            Document document = parse(storedPath, type, data);
+    @Override
+    public RagUploadVO parseDocument(Long id, SplitterConfig splitConfig) {
+        if (id == null) {
+            throw new BusinessException("文档 id 不能为空");
+        }
+        RagDocumentEntity entity = ragDocumentMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException("文档不存在: " + id);
+        }
+        if (entity.getFilePath() == null || entity.getFilePath().isBlank()) {
+            throw new BusinessException("文档缺少已上传的原始文件, 请删除后重新上传");
+        }
 
-            // 4. 按所选方式切分(滤掉空片段) → 每段挂 docId/fileName 元数据 → 分批向量化入库(追加式, 不清空旧向量)
+        // 0. 先解析切分参数(非法参数直接报错, 不动库不动向量)
+        ResolvedSplitter resolved = splitterFactory.resolve(splitConfig);
+
+        boolean isReParse = entity.getStatus() != null && entity.getStatus() == 1;
+        if (isReParse) {
+            // 重新解析: 先清空该文档全部旧向量, 再按新配置重建
+            embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID).isEqualTo(String.valueOf(id)));
+            log.info("文档[{}]重新解析: 已清空旧向量 {} 个", entity.getFileName(), entity.getSegmentCount());
+        }
+
+        try {
+            // 1. 读取已上传的原始文件(上传阶段已落盘, 此处不再接收文件流)
+            Path stored = Path.of(entity.getFilePath());
+            if (!stored.isAbsolute()) {
+                stored = Path.of("").toAbsolutePath().resolve(stored);
+            }
+            if (!Files.exists(stored)) {
+                throw new BusinessException("原始文件已丢失(" + entity.getFilePath() + "), 请删除后重新上传");
+            }
+            byte[] data = Files.readAllBytes(stored);
+
+            // 2. 解析文档内容(pdf 走 ApachePdfBoxDocumentParser, 文本类 UTF-8 读取)
+            Document document = parse(entity.getFilePath(), entity.getFileType(), data);
+
+            // 3. 按所选方式切分(滤掉空片段) → 每段挂 docId/fileName 元数据 → 分批向量化入库
             List<TextSegment> segments = resolved.splitter().split(document).stream()
                     .filter(segment -> segment.text() != null && !segment.text().isBlank())
                     .toList();
             if (!segments.isEmpty()) {
-                segments = attachMetadata(segments, docId, fileName);
+                segments = attachMetadata(segments, id, entity.getFileName());
                 for (int i = 0; i < segments.size(); i += EMBEDDING_BATCH_SIZE) {
                     List<TextSegment> batch =
                             segments.subList(i, Math.min(i + EMBEDDING_BATCH_SIZE, segments.size()));
                     List<Embedding> embeddings = embedBatch(batch);
                     embeddingStore.addAll(embeddings, batch);
-                    log.info("文档[{}]向量化入库中: {}/{} 片段", fileName,
+                    log.info("文档[{}]向量化入库中: {}/{} 片段", entity.getFileName(),
                             Math.min(i + EMBEDDING_BATCH_SIZE, segments.size()), segments.size());
                 }
             }
 
-            // 5. 回填保存路径与片段数
+            // 4. 回填状态=已解析 / 片段数 / 本次切分方案
+            entity.setStatus(1);
             entity.setSegmentCount(segments.size());
+            entity.setSplitterType(resolved.type().getCode());
+            entity.setSegmentSize(resolved.segmentSize());
+            entity.setOverlapSize(resolved.overlap());
+            entity.setSplitterPattern(resolved.pattern() == null ? "" : resolved.pattern());
             ragDocumentMapper.updateById(entity);
-            log.info("文档[{}]入库完成: 切分方式 {}, 已保存至 {}, 共 {} 个片段, 当前知识库共 {} 片段",
-                    fileName, resolved.display(), storedPath, segments.size(), size());
+            log.info("文档[{}]解析完成: {}, 入库 {} 个片段, 当前知识库共 {} 片段",
+                    entity.getFileName(), resolved.display(), segments.size(), size());
 
             RagUploadVO vo = new RagUploadVO();
-            vo.setId(docId);
-            vo.setFileName(fileName);
-            vo.setFileSize(fileSize);
-            vo.setFileType(type);
-            vo.setFilePath(storedPath);
+            vo.setId(id);
+            vo.setFileName(entity.getFileName());
+            vo.setFileSize(entity.getFileSize());
+            vo.setFileType(entity.getFileType());
+            vo.setFilePath(entity.getFilePath());
             vo.setSegments(segments.size());
             vo.setTotal(size());
             vo.setSplitterType(resolved.type().getCode());
@@ -182,17 +222,35 @@ public class RagServiceImpl implements RagService {
             vo.setOverlapSize(resolved.overlap());
             return vo;
         } catch (Exception e) {
-            // 失败回滚: 删元数据记录 + 清理该文件已写入的部分向量 + 删已保存文件, 保证列表/向量库/磁盘一致
-            ragDocumentMapper.deleteById(docId);
+            // 解析失败: 清理本次已写入的部分向量, 文档保持"待解析"可重试(记录与文件都保留)
             try {
-                embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID)
-                        .isEqualTo(String.valueOf(docId)));
+                embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID).isEqualTo(String.valueOf(id)));
             } catch (Exception cleanup) {
-                log.warn("清理文档[{}]残留向量失败: {}", fileName, cleanup.getMessage());
+                log.warn("清理文档[{}]残留向量失败: {}", entity.getFileName(), cleanup.getMessage());
             }
-            deleteUploadFile(storedPath);
-            throw new BusinessException("文档入库失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+            entity.setStatus(0);
+            entity.setSegmentCount(0);
+            ragDocumentMapper.updateById(entity);
+            throw new BusinessException("文档解析失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
         }
+    }
+
+    /** 实体 → 列表 VO(字段一一对应) */
+    private RagDocumentVO toVO(RagDocumentEntity e) {
+        RagDocumentVO vo = new RagDocumentVO();
+        vo.setId(e.getId());
+        vo.setFileName(e.getFileName());
+        vo.setFileSize(e.getFileSize());
+        vo.setFileType(e.getFileType());
+        vo.setFilePath(e.getFilePath());
+        vo.setSegmentCount(e.getSegmentCount());
+        vo.setStatus(e.getStatus());
+        vo.setSplitterType(e.getSplitterType());
+        vo.setSegmentSize(e.getSegmentSize());
+        vo.setOverlapSize(e.getOverlapSize());
+        vo.setSplitterPattern(e.getSplitterPattern());
+        vo.setCreateTime(e.getCreateTime());
+        return vo;
     }
 
     @Override
@@ -203,19 +261,7 @@ public class RagServiceImpl implements RagService {
                         .orderByDesc(RagDocumentEntity::getId));
         List<RagDocumentVO> result = new ArrayList<>(entities.size());
         for (RagDocumentEntity e : entities) {
-            RagDocumentVO vo = new RagDocumentVO();
-            vo.setId(e.getId());
-            vo.setFileName(e.getFileName());
-            vo.setFileSize(e.getFileSize());
-            vo.setFileType(e.getFileType());
-            vo.setFilePath(e.getFilePath());
-            vo.setSegmentCount(e.getSegmentCount());
-            vo.setSplitterType(e.getSplitterType());
-            vo.setSegmentSize(e.getSegmentSize());
-            vo.setOverlapSize(e.getOverlapSize());
-            vo.setSplitterPattern(e.getSplitterPattern());
-            vo.setCreateTime(e.getCreateTime());
-            result.add(vo);
+            result.add(toVO(e));
         }
         return result;
     }

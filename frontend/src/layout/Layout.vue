@@ -183,7 +183,16 @@ const collapsed = ref(false)
 // ---- 菜单配置(数据驱动, 替代模板里手写的 el-menu-item/el-sub-menu) ----
 const MENU = [
   { type: 'item', path: '/home', label: '首页', icon: HomeFilled },
+  { type: 'item', path: '/chat', label: '对话助手', icon: ChatDotRound },
   { type: 'item', path: '/ai-services', label: 'AI Services 指南', icon: SetUp },
+  {
+    type: 'group', key: 'kb', label: '知识库', icon: Collection,
+    children: [
+      { path: '/rag', label: '知识库管理', icon: Document },
+      { path: '/rag-chat', label: '知识问答', icon: Tickets },
+      { path: '/vector', label: '向量库查询', icon: Coin }
+    ]
+  },
   {
     type: 'group', key: 'data-query', label: '智能问数', icon: DataBoard,
     children: [
@@ -195,14 +204,6 @@ const MENU = [
       { path: '/term-manage', label: '术语管理', icon: Collection },
       { path: '/mask-rule-manage', label: '脱敏规则', icon: Lock },
       { path: '/fewshot-manage', label: '示例库管理', icon: Grid }
-    ]
-  },
-  {
-    type: 'group', key: 'chat', label: '对话与知识', icon: ChatLineSquare,
-    children: [
-      { path: '/chat', label: '对话助手', icon: ChatDotRound },
-      { path: '/rag', label: 'RAG 知识库', icon: Collection },
-      { path: '/vector', label: '向量库查询', icon: Coin }
     ]
   },
   {
