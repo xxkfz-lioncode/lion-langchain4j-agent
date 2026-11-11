@@ -1,0 +1,40 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/login",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/chat/chat",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/mine/mine",
+      "style": { "navigationStyle": "custom" }
+    }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#f3f5f9"
+  },
+  "tabBar": {
+    "color": "#9ca3af",
+    "selectedColor": "#2d4a8f",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/chat/chat",
+        "text": "对话",
+        "iconPath": "static/tab/chat.png",
+        "selectedIconPath": "static/tab/chat-active.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "static/tab/mine.png",
+        "selectedIconPath": "static/tab/mine-active.png"
+      }
+    ]
+  }
+}

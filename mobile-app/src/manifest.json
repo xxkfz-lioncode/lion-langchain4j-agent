@@ -1,0 +1,23 @@
+{
+  "name": "Lion Agent",
+  "appid": "",
+  "description": "Lion LangChain4j Agent 移动端(对话助手)",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "vueVersion": "3",
+  "mp-weixin": {
+    "appid": "touristappid",
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  },
+  "app-plus": {
+    "compatible": {
+      "ignoreVersion": true
+    }
+  },
+  "h5": {
+    "title": "Lion Agent"
+  }
+}
