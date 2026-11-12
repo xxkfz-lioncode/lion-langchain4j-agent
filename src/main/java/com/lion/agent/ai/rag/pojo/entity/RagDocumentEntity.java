@@ -42,8 +42,14 @@ public class RagDocumentEntity {
     /** 正则切分使用的正则(仅 regex 方式有值, 其余存空串) */
     private String splitterPattern;
 
-    /** 上传文件保存路径(相对运行目录, 如 upload/1_demo.pdf; 删除文档时一并删除) */
+    /**
+     * 原始文件对象Key(local = 相对路径如 upload/1_demo.pdf; minio = 对象Key如 rag/2026/11/1_demo.pdf)
+     * 语义由 storage_type 决定; 解析读取/删除/下载时据此路由到对应存储实现
+     */
     private String filePath;
+
+    /** 存储方式: local 本地磁盘 / minio 对象存储(新上传文件由 lion.rag.storage-type 决定) */
+    private String storageType;
 
     /** 入库片段数(向量条数) */
     private Integer segmentCount;

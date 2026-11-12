@@ -6,12 +6,16 @@ import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.ai.rag.service.RagService;
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
+import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
 import com.lion.agent.ai.rag.pojo.vo.RagUploadVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -31,6 +37,7 @@ import java.util.List;
  * <ol>
  *   <li>上传文档(仅保存):       POST   /api/rag/upload (multipart, 支持 .pdf/.txt/.md, 上限 20MB)</li>
  *   <li>解析文档(切分+向量化):  POST   /api/rag/documents/{id}/parse (可选切分参数; 已解析文档重复调用即重新解析)</li>
+ *   <li>下载文档原文:           GET    /api/rag/documents/{id}/download (鉴权后流式回吐)</li>
  *   <li>知识库问答:             POST   /api/rag/chat  body={"question":"你的问题"}</li>
  *   <li>文档列表:               GET    /api/rag/documents (按上传时间倒序, 含解析状态)</li>
  *   <li>删除单个文档:           DELETE /api/rag/documents/{id} (同时删除该文件全部向量)</li>
@@ -126,6 +133,30 @@ public class RagController {
             @PathVariable("id") Long id) {
         ragService.deleteDocument(id);
         return R.ok();
+    }
+
+    /**
+     * 下载文档原文(管理页"查看原文"用): 走后端鉴权流式回吐, 不暴露对象存储地址
+     */
+    @Operation(summary = "下载文档原文", description = "按文档记录的存储方式(local/minio)读取原文并回吐; "
+            + "bucket 为私有, 外部获取统一走本接口鉴权")
+    @GetMapping("/documents/{id}/download")
+    public ResponseEntity<byte[]> download(
+            @Parameter(description = "文档id", required = true, example = "1")
+            @PathVariable("id") Long id) {
+        RagFileVO file = ragService.downloadDocument(id);
+        // RFC 5987 编码文件名(中文/空格安全); PDF 标记二进制类型, 文本类按 UTF-8 文本
+        String encodedName = URLEncoder.encode(file.getFileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        MediaType mediaType = "pdf".equalsIgnoreCase(file.getFileType())
+                ? MediaType.APPLICATION_PDF
+                : MediaType.parseMediaType("text/plain;charset=UTF-8");
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename*=UTF-8''" + encodedName)
+                .contentLength(file.getData().length)
+                .body(file.getData());
     }
 
     /**

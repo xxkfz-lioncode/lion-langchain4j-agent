@@ -196,13 +196,25 @@ lion:
 
   # ---- 知识库(RAG) ----
   rag:
-    # 上传文件保存目录: 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)
+    # 原始文件存储方式: local = 本地 upload 目录(默认, 零依赖) / minio = 对象存储(lion.minio.* 配置)
+    # 切到 minio 后新上传文件进 MinIO; 存量本地文件仍按 rag_document.storage_type 走对应存储, 无需迁移
+    storage-type: ${RAG_STORAGE_TYPE:minio}
+    # 上传文件保存目录(storage-type=local 时使用): 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)
     upload-dir: upload
     # 启动时是否把 src/main/resources/docs 下的文档灌入向量库(MilvusEmbeddingStore 追加式写入, 不查重):
     # false = 默认, 启动只装配检索器, 不重复灌库(Milvus 数据持久化, 灌一次即可);
     # true  = 临时打开: 改了 docs 里的文档想重新入库, 或删集合后重建时用, 用完记得改回 false,
     #         否则每次启动都会把同样的片段再追加一遍, 向量库里越积越多。
     ingest-on-startup: false
+
+  # ---- MinIO 对象存储(storage-type=minio 时使用, 凭据走 .env, 严禁写死) ----
+  minio:
+    endpoint: ${MINIO_ENDPOINT:}
+    access-key: ${MINIO_ACCESS_KEY:}
+    secret-key: ${MINIO_SECRET_KEY:}
+    bucket: ${MINIO_BUCKET:lion-rag}
+
+
   mcp:
     # 总开关; 默认开启, 关闭后整套 MCP 接入不生效, ManualAssistant 自动降级到只用 Skills
     enabled: true

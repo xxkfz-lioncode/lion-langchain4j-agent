@@ -123,6 +123,14 @@
             <artifactId>langchain4j-milvus-spring-boot-starter</artifactId>
             <version>${langchain4j.version}</version>
         </dependency>
+
+        <!-- MinIO 对象存储客户端: RAG 知识文档原始文件存储(FileStorage 抽象的 minio 实现)。
+             仅在 lion.rag.storage-type=minio 时实际使用; 客户端惰性初始化, local 模式下零开销 -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.17</version>
+        </dependency>
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j-document-parser-apache-tika</artifactId>

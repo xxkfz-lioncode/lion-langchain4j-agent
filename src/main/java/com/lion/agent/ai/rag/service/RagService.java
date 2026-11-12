@@ -2,6 +2,7 @@ package com.lion.agent.ai.rag.service;
 
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
+import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
 import com.lion.agent.ai.rag.pojo.vo.RagUploadVO;
 
@@ -63,6 +64,14 @@ public interface RagService {
      * @param id 文档 id
      */
     void deleteDocument(Long id);
+
+    /**
+     * 下载文档原文(管理页"查看原文"用): 按 rag_document.storage_type 路由到对应存储读取
+     *
+     * @param id 文档 id
+     * @return 文件内容 + 文件名/类型(控制层组装下载响应)
+     */
+    RagFileVO downloadDocument(Long id);
 
     /**
      * 知识库问答: ContentRetriever 检索相关片段 → 组装参考上下文 → 千问生成回答(阻塞式整段返回)

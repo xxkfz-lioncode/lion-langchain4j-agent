@@ -1,8 +1,7 @@
 # ============================================================
-# Lion LangChain4j Agent - 本地中间件(MySQL / Redis / Milvus)
+# Lion LangChain4j Agent - 本地中间件(MySQL / Redis / Milvus / MinIO)
 # 仅启动中间件, 前后端仍在宿主机上运行(start-backend.bat / frontend)。
-# 三个镜像本地均已存在, 不会触发拉取:
-#   mysql:8.0  redis:7  milvusdb/milvus:v2.4.17
+# 镜像: mysql:8.0  redis:7  milvusdb/milvus:v2.4.17  minio/minio
 # 启动: docker compose up -d    停止: docker compose down
 # ============================================================
 
@@ -75,9 +74,31 @@ services:
       timeout: 20s
       retries: 5
 
+  # ---- MinIO (RAG 知识文档原始文件对象存储, S3 兼容) ----
+  # 9000: S3 API 端口(后端 .env 的 MINIO_ENDPOINT)  9001: Web 控制台(浏览器可登录管理)
+  # 凭据与 .env 的 MINIO_ACCESS_KEY/MINIO_SECRET_KEY 保持一致; bucket 由后端首次使用时自动创建
+  # 镜像说明: 本机 docker 配置的加速器已失效(403)拉不到官方 minio/minio,
+  #           故使用本地已存在的 cgr.dev/chainguard/minio 镜像(功能一致, 非 root 运行)
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: lion-minio
+    restart: unless-stopped
+    user: "0:0"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: lionminio
+      MINIO_ROOT_PASSWORD: lionminio123
+    entrypoint: [ "minio" ]
+    command: [ "server", "/data", "--console-address", ":9001" ]
+    volumes:
+      - minio-data:/data
+
 volumes:
   mysql-data:                        # 本项目专属新卷(首次启动自动执行 docs/sql/init.sql 初始化)
   redis-data:
     name: lion-agent_redis-data    # 外部已有卷(旧项目 lion-agent 的 Redis 数据), 数据保留
     external: true
   milvus-data:                       # 本项目专属新卷(旧卷配置依赖已不存在的外部 etcd, 故弃用)
+  minio-data:                        # MinIO 对象数据(知识文档原始文件)

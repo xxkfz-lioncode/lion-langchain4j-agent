@@ -39,6 +39,13 @@ export const getRagDocuments = () => request.get('/api/rag/documents')
 /** 删除单个文档(同时删除该文件全部向量) */
 export const deleteRagDocument = (id) => request.delete(`/api/rag/documents/${id}`)
 
+/**
+ * 下载文档原文: blob 响应(拦截器返回完整 response, 调用方用 data + 保存文件名)
+ * 用法: const res = await downloadRagDocument(id); URL.createObjectURL(res.data) 触发浏览器保存
+ */
+export const downloadRagDocument = (id) =>
+  request.get(`/api/rag/documents/${id}/download`, { responseType: 'blob' })
+
 /** 知识库问答, 返回 AI 回答文本(阻塞式整段返回) */
 export const ragChat = (question) => request.post('/api/rag/chat', { question })
 

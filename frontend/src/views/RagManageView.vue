@@ -104,6 +104,9 @@
             <el-button link type="danger" :disabled="parsingId !== null" @click="handleDelete(row)">
               删除
             </el-button>
+            <el-button v-if="row.filePath" link :disabled="parsingId !== null" @click="handleDownload(row)">
+              下载
+            </el-button>
           </template>
         </el-table-column>
         <template #empty>
@@ -197,6 +200,7 @@ import {
   parseRagDocument,
   getRagDocuments,
   deleteRagDocument,
+  downloadRagDocument,
   getRagSplitters
 } from '@/api/rag'
 
@@ -445,6 +449,23 @@ async function handleBatchDelete() {
     await loadDocuments()
   }
   if (fail === 0) ElMessage.success('所选文档已删除')
+}
+
+/** 下载文档原文: blob → 临时 URL 触发浏览器保存(文件名用原始文件名) */
+async function handleDownload(row) {
+  try {
+    const res = await downloadRagDocument(row.id)
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = row.fileName
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    ElMessage.error('下载失败: ' + (e.message || '未知错误'))
+  }
 }
 
 // ---------------- 表格勾选 ----------------

@@ -11,11 +11,12 @@ import com.lion.agent.ai.rag.splitter.ResolvedSplitter;
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.splitter.SplitterType;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
+import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
 import com.lion.agent.ai.rag.pojo.vo.RagUploadVO;
+import com.lion.agent.ai.rag.storage.FileStorage;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.document.loader.FileSystemDocumentLoader;
 import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.SystemMessage;
@@ -33,21 +34,22 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * RAG 知识库服务实现
  * <p>
  * 链路(上传与解析解耦, 上传阶段零模型调用):
- * 1. 上传: 仅保存原始文件(upload 目录) + 落 rag_document(status=待解析), 不产生任何模型费用;
- * 2. 解析(用户显式触发): 加载已存文件({@link FileSystemDocumentLoader}, PDF 用 ApachePdfBoxDocumentParser)
+ * 1. 上传: 原始文件存入激活存储({@link FileStorage}, local/minio 由 lion.rag.storage-type 决定)
+ *    + 落 rag_document(status=待解析, storage_type 随之记录), 不产生任何模型费用;
+ * 2. 解析(用户显式触发): 按记录的 storage_type 从对应存储读取原始文件(PDF 用 ApachePdfBoxDocumentParser 流式解析)
  *    → 切分(支持多种方式, 见 {@link SplitterType}, 参数由 {@link SplitterConfig} 传入,
  *    经 {@link DocumentSplitterFactory} 校验后构建切分器, 默认递归 300/50)
  *    → 分批(≤10 条/批, DashScope text-embedding-v3 单请求上限)调 {@link EmbeddingModel#embedAll}
@@ -61,8 +63,9 @@ import java.util.Locale;
  *   见 application.yml 的 langchain4j.milvus.* 与 {@code rag/config/RagVectorStoreConfig});
  * - 入库采用"追加式": 多个文档向量共存, 每个片段携带 docId/fileName 元数据(随片段存入 Milvus 的
  *   metadata JSON 字段), 支持文档列表持久化(rag_document)与按文件删除(removeAll(Filter));
- * - 上传的原始文件保存到 upload 目录(可配 lion.rag.upload-dir, 文件名加 docId 前缀防重名),
- *   路径记录在 rag_document.file_path, 删除文档时一并删除。
+ * - 原始文件经 {@link FileStorage} 抽象存储: local(upload 目录, lion.rag.upload-dir)或
+ *   MinIO(lion.minio.*), 对象Key记录在 rag_document.file_path, 存储方式记录在 storage_type,
+ *   删除/解析/下载均按 storage_type 路由, 两种存储可共存(local 存量数据无需迁移即可继续解析)。
  */
 @Slf4j
 @Service
@@ -87,14 +90,17 @@ public class RagServiceImpl implements RagService {
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final EmbeddingStoreContentRetriever retriever;
     private final RagDocumentMapper ragDocumentMapper;
-    /** 上传文件保存目录(相对运行目录, 见 application.yml 的 lion.rag.upload-dir) */
-    private final String uploadDir;
+    /** 全部存储实现(local + minio), 按各自 type() 索引; 存量文件按 rag_document.storage_type 路由 */
+    private final Map<String, FileStorage> storages;
+    /** 激活存储(lion.rag.storage-type): 新上传文件落这里 */
+    private final FileStorage activeStorage;
 
     public RagServiceImpl(ChatModel chatModel, EmbeddingModel embeddingModel,
                           EmbeddingStore<TextSegment> embeddingStore,
                           DocumentSplitterFactory splitterFactory,
                           RagDocumentMapper ragDocumentMapper,
-                          @Value("${lion.rag.upload-dir:upload}") String uploadDir) {
+                          List<FileStorage> storageImpls,
+                          @Value("${lion.rag.storage-type:local}") String activeStorageType) {
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;
         // 向量库由 milvus starter 自动装配(MilvusEmbeddingStore), 经 rag/config/RagVectorStoreConfig
@@ -108,7 +114,21 @@ public class RagServiceImpl implements RagService {
                 .minScore(MIN_SCORE)
                 .build();
         this.ragDocumentMapper = ragDocumentMapper;
-        this.uploadDir = uploadDir;
+        this.storages = storageImpls.stream()
+                .collect(Collectors.toMap(FileStorage::type, Function.identity()));
+        FileStorage active = storages.get(activeStorageType);
+        if (active == null) {
+            throw new IllegalArgumentException("未知的存储方式: " + activeStorageType
+                    + " (可选: " + storages.keySet() + ")");
+        }
+        this.activeStorage = active;
+    }
+
+    /** 按记录的 storage_type 取存储实现(空/未知回退激活存储, 兼容历史数据) */
+    private FileStorage storageOf(RagDocumentEntity entity) {
+        String type = entity.getStorageType();
+        FileStorage storage = type == null ? null : storages.get(type);
+        return storage != null ? storage : activeStorage;
     }
 
     @Override
@@ -132,11 +152,13 @@ public class RagServiceImpl implements RagService {
         Long docId = entity.getId();
 
         try {
-            // 2. 原始文件保存到 upload 目录(解析阶段直接读取该文件)
-            String storedPath = saveUploadFile(fileName, data, docId);
-            entity.setFilePath(storedPath);
+            // 2. 原始文件存入激活存储(local/minio 由 lion.rag.storage-type 决定)
+            String objectKey = activeStorage.save(docId, fileName, data);
+            entity.setFilePath(objectKey);
+            entity.setStorageType(activeStorage.type());
             ragDocumentMapper.updateById(entity);
-            log.info("文档[{}]已上传(仅保存, 待解析): id={}, 保存至 {}", fileName, docId, storedPath);
+            log.info("文档[{}]已上传(仅保存, 待解析): id={}, 存储={}, 对象={}",
+                    fileName, docId, activeStorage.type(), objectKey);
             return toVO(entity);
         } catch (Exception e) {
             // 失败回滚: 删元数据记录 + 删已保存文件(此阶段无向量, 无需清理)
@@ -169,18 +191,12 @@ public class RagServiceImpl implements RagService {
         }
 
         try {
-            // 1. 读取已上传的原始文件(上传阶段已落盘, 此处不再接收文件流)
-            Path stored = Path.of(entity.getFilePath());
-            if (!stored.isAbsolute()) {
-                stored = Path.of("").toAbsolutePath().resolve(stored);
-            }
-            if (!Files.exists(stored)) {
-                throw new BusinessException("原始文件已丢失(" + entity.getFilePath() + "), 请删除后重新上传");
-            }
-            byte[] data = Files.readAllBytes(stored);
+            // 1. 从记录对应的存储读取原始文件(local 存量数据/MinIO 新数据各自路由)
+            FileStorage storage = storageOf(entity);
+            byte[] data = storage.load(entity.getFilePath());
 
-            // 2. 解析文档内容(pdf 走 ApachePdfBoxDocumentParser, 文本类 UTF-8 读取)
-            Document document = parse(entity.getFilePath(), entity.getFileType(), data);
+            // 2. 解析文档内容(pdf 交给 ApachePdfBoxDocumentParser 流式解析, 文本类 UTF-8 读取)
+            Document document = parse(entity.getFileType(), data);
 
             // 3. 按所选方式切分(滤掉空片段) → 每段挂 docId/fileName 元数据 → 分批向量化入库
             List<TextSegment> segments = resolved.splitter().split(document).stream()
@@ -303,10 +319,28 @@ public class RagServiceImpl implements RagService {
 
         // 2. 再删元数据记录
         ragDocumentMapper.deleteById(id);
-        // 3. 最后删 upload 目录中的原始文件(失败仅告警)
-        deleteUploadFile(entity.getFilePath());
-        log.info("文档[{}]已删除(含 {} 个向量片段, 文件: {})",
-                entity.getFileName(), entity.getSegmentCount(), entity.getFilePath());
+        // 3. 最后删原始文件(按记录的 storage_type 路由; 失败仅告警, 不阻断主流程)
+        storageOf(entity).delete(entity.getFilePath());
+        log.info("文档[{}]已删除(含 {} 个向量片段, 存储={}, 对象={})",
+                entity.getFileName(), entity.getSegmentCount(), entity.getStorageType(), entity.getFilePath());
+    }
+
+    @Override
+    public RagFileVO downloadDocument(Long id) {
+        if (id == null) {
+            throw new BusinessException("文档 id 不能为空");
+        }
+        RagDocumentEntity entity = ragDocumentMapper.selectById(id);
+        if (entity == null) {
+            throw new BusinessException("文档不存在: " + id);
+        }
+        FileStorage storage = storageOf(entity);
+        byte[] data = storage.load(entity.getFilePath());
+        RagFileVO vo = new RagFileVO();
+        vo.setFileName(entity.getFileName());
+        vo.setFileType(entity.getFileType());
+        vo.setData(data);
+        return vo;
     }
 
     /**
@@ -331,57 +365,14 @@ public class RagServiceImpl implements RagService {
     }
 
     /**
-     * 解析文件内容: pdf 直接用已保存的上传文件交给 ApachePdfBoxDocumentParser(省一次临时落盘),
+     * 解析文件内容: pdf 交给 ApachePdfBoxDocumentParser 流式解析(直接吃字节, 不落临时盘),
      * 其余(txt/md 等)按 UTF-8 读取字节内容
      */
-    private Document parse(String storedPath, String type, byte[] data) throws Exception {
+    private Document parse(String type, byte[] data) throws Exception {
         if ("pdf".equals(type)) {
-            return FileSystemDocumentLoader.loadDocument(storedPath, new ApachePdfBoxDocumentParser());
+            return new ApachePdfBoxDocumentParser().parse(new ByteArrayInputStream(data));
         }
         return Document.from(new String(data, StandardCharsets.UTF_8));
-    }
-
-    /**
-     * 保存上传的原始文件到 upload 目录: 文件名加 docId 前缀防重名覆盖,
-     * 返回相对运行目录的路径(存库供展示/删除), 如 upload/3_需求文档.pdf
-     */
-    private String saveUploadFile(String fileName, byte[] data, Long docId) throws IOException {
-        Path dir = Path.of(uploadDir).toAbsolutePath().normalize();
-        Files.createDirectories(dir);
-        Path target = dir.resolve(docId + "_" + sanitizeFileName(fileName)).normalize();
-        // 防目录穿越: 归一化后必须仍落在 upload 目录内
-        if (!target.startsWith(dir)) {
-            throw new BusinessException("文件名非法: " + fileName);
-        }
-        Files.write(target, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-        return Path.of(uploadDir).resolve(target.getFileName()).toString().replace('\\', '/');
-    }
-
-    /** 去掉路径部分与非法字符(防目录穿越 / Windows 文件名非法字符导致落盘失败) */
-    private String sanitizeFileName(String fileName) {
-        String name = fileName.replace('\\', '/');
-        int slash = name.lastIndexOf('/');
-        if (slash >= 0) {
-            name = name.substring(slash + 1);
-        }
-        String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-        return cleaned.isEmpty() ? "unnamed" : cleaned;
-    }
-
-    /** 删除 upload 目录中的上传文件(相对路径按运行目录解析); 失败仅告警, 不阻断主流程 */
-    private void deleteUploadFile(String filePath) {
-        if (filePath == null || filePath.isBlank()) {
-            return;
-        }
-        try {
-            Path path = Path.of(filePath);
-            if (!path.isAbsolute()) {
-                path = Path.of("").toAbsolutePath().resolve(path);
-            }
-            Files.deleteIfExists(path);
-        } catch (Exception e) {
-            log.warn("删除上传文件[{}]失败: {}", filePath, e.getMessage());
-        }
     }
 
     /**
@@ -410,7 +401,7 @@ public class RagServiceImpl implements RagService {
                 log.warn("向量化失败(第 {} 条批次, 第 {} 次尝试): {}", batch.size(), attempt, e.getMessage());
             }
         }
-        throw new BusinessException("文档向量化失败: " + (last == null ? "未知错误" : last.getMessage()));
+        throw new BusinessException("文档向量化失败: " + last.getMessage());
     }
 
     @Override
