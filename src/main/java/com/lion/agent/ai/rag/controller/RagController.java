@@ -5,6 +5,7 @@ import com.lion.agent.common.R;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.ai.rag.service.RagService;
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
+import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
@@ -160,11 +161,12 @@ public class RagController {
     }
 
     /**
-     * 知识库问答(阻塞式, 整段返回 AI 回答)
+     * 知识库问答(阻塞式, 整段返回 AI 回答 + 引用来源)
      */
-    @Operation(summary = "知识库问答", description = "阻塞式, 先向量检索相关知识片段再由千问生成回答, 整段返回")
+    @Operation(summary = "知识库问答", description = "阻塞式, 先向量检索相关知识片段再由千问生成回答; "
+            + "返回回答文本与引用来源列表(检索层注入, 含文档名/匹配度/片段原文)")
     @PostMapping("/chat")
-    public R<String> chat(@RequestBody @Valid RagChatRequest request) {
+    public R<RagAnswerVO> chat(@RequestBody @Valid RagChatRequest request) {
         return R.ok(ragService.answer(request.getQuestion()));
     }
 

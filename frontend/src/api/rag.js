@@ -46,7 +46,10 @@ export const deleteRagDocument = (id) => request.delete(`/api/rag/documents/${id
 export const downloadRagDocument = (id) =>
   request.get(`/api/rag/documents/${id}/download`, { responseType: 'blob' })
 
-/** 知识库问答, 返回 AI 回答文本(阻塞式整段返回) */
+/**
+ * 知识库问答(阻塞式整段返回), 返回 { answer, sources }
+ * sources: 引用来源 [{ docId, fileName, score(0-100), snippet(摘要), text(片段全文) }]
+ */
 export const ragChat = (question) => request.post('/api/rag/chat', { question })
 
 /** 当前知识库片段数 */

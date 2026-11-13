@@ -1,6 +1,7 @@
 package com.lion.agent.ai.rag.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.lion.agent.ai.rag.pojo.vo.*;
 import com.lion.agent.common.exception.BusinessException;
 
 import com.lion.agent.ai.rag.pojo.entity.RagDocumentEntity;
@@ -10,10 +11,6 @@ import com.lion.agent.ai.rag.splitter.DocumentSplitterFactory;
 import com.lion.agent.ai.rag.splitter.ResolvedSplitter;
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.splitter.SplitterType;
-import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
-import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
-import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
-import com.lion.agent.ai.rag.pojo.vo.RagUploadVO;
 import com.lion.agent.ai.rag.storage.FileStorage;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
@@ -25,9 +22,8 @@ import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.embedding.EmbeddingModel;
-import dev.langchain4j.rag.content.Content;
-import dev.langchain4j.rag.content.retriever.EmbeddingStoreContentRetriever;
-import dev.langchain4j.rag.query.Query;
+import dev.langchain4j.store.embedding.EmbeddingMatch;
+import dev.langchain4j.store.embedding.EmbeddingSearchRequest;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import lombok.extern.slf4j.Slf4j;
@@ -55,7 +51,8 @@ import java.util.stream.Collectors;
  *    → 分批(≤10 条/批, DashScope text-embedding-v3 单请求上限)调 {@link EmbeddingModel#embedAll}
  *    → 写入向量库(避开 EmbeddingStoreIngestor 整篇一次性 embedAll 的 batch size 限制);
  *    已解析文档可重新解析(先清旧向量再按新配置重建);
- * 3. 问答: {@link EmbeddingStoreContentRetriever} 检索 Top-N 相关片段(低于 minScore 过滤) → 拼入提示词 → 千问作答。
+ * 3. 问答: 直接检索向量库(带相似度分数)取 Top-N 片段(低于 minScore 过滤) → 拼入提示词 → 千问作答,
+ *    片段随回答作为引用来源一并返回(文档名/匹配度/原文)。
  * <p>
  * 说明:
  * - 向量化模型 = DashScope text-embedding-v3(由 application.yml embedding-model 配置自动装配);
@@ -72,11 +69,13 @@ import java.util.stream.Collectors;
 public class RagServiceImpl implements RagService {
 
     /** 检索最多返回的相似片段数 */
-    private static final int MAX_RESULTS = 5;
+    private static final int MAX_RESULTS = 2;
     /** 相似度低于该值的片段将被过滤 */
-    private static final double MIN_SCORE = 0.5;
+    private static final double MIN_SCORE = 0.75;
     /** 向量化单批最大条数(DashScope text-embedding-v3 限制: 单请求最多 10 条 input) */
     private static final int EMBEDDING_BATCH_SIZE = 10;
+    /** 引用来源摘要截断长度(超出部分以 … 结尾, 全文走 text 字段) */
+    private static final int SNIPPET_MAX = 120;
 
     /** 向量片段元数据: 文档 id(即 rag_document.id, 删除/过滤用) */
     public static final String META_DOC_ID = "docId";
@@ -88,7 +87,6 @@ public class RagServiceImpl implements RagService {
     private final DocumentSplitterFactory splitterFactory;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
-    private final EmbeddingStoreContentRetriever retriever;
     private final RagDocumentMapper ragDocumentMapper;
     /** 全部存储实现(local + minio), 按各自 type() 索引; 存量文件按 rag_document.storage_type 路由 */
     private final Map<String, FileStorage> storages;
@@ -107,19 +105,12 @@ public class RagServiceImpl implements RagService {
         // 的 @Primary Bean 锁定, 不要在此处手工 new, 否则与注入/检索用的 store 不一致
         this.embeddingStore = embeddingStore;
         this.splitterFactory = splitterFactory;
-        this.retriever = EmbeddingStoreContentRetriever.builder()
-                .embeddingStore(embeddingStore)
-                .embeddingModel(embeddingModel)
-                .maxResults(MAX_RESULTS)
-                .minScore(MIN_SCORE)
-                .build();
         this.ragDocumentMapper = ragDocumentMapper;
         this.storages = storageImpls.stream()
                 .collect(Collectors.toMap(FileStorage::type, Function.identity()));
         FileStorage active = storages.get(activeStorageType);
         if (active == null) {
-            throw new IllegalArgumentException("未知的存储方式: " + activeStorageType
-                    + " (可选: " + storages.keySet() + ")");
+            throw new IllegalArgumentException("未知的存储方式: " + activeStorageType + " (可选: " + storages.keySet() + ")");
         }
         this.activeStorage = active;
     }
@@ -405,19 +396,31 @@ public class RagServiceImpl implements RagService {
     }
 
     @Override
-    public String answer(String question) {
+    public RagAnswerVO answer(String question) {
         if (question == null || question.isBlank()) {
             throw new BusinessException("问题内容不能为空");
         }
-        // ContentRetriever 自动完成: 问题向量化 → 相似度检索 → 返回相关片段(minScore 已过滤低分)
-        List<Content> contents = retriever.retrieve(Query.from(question));
-        if (contents.isEmpty()) {
-            return "知识库中暂时没有与您的问题相关的资料, 请先导入知识文档, 或换个问法试试。";
+        // 直接检索向量库(不用 ContentRetriever, 因为需要每个片段的相似度分数作引用匹配度):
+        // 问题向量化 → 相似度检索 Top-N(minScore 已过滤低分), 结果按分数倒序
+        Embedding queryEmbedding = embeddingModel.embed(question).content();
+        List<EmbeddingMatch<TextSegment>> matches = embeddingStore.search(EmbeddingSearchRequest.builder()
+                .queryEmbedding(queryEmbedding)
+                .maxResults(MAX_RESULTS)
+                .minScore(MIN_SCORE)
+                .build()).matches();
+
+        // 引用来源由检索层注入(与拼进提示词的片段一一对应), 不依赖 LLM 自述出处, 保证真实可查
+        List<RagSourceVO> sources = matches.stream().map(this::toSource).toList();
+        if (matches.isEmpty()) {
+            RagAnswerVO empty = new RagAnswerVO();
+            empty.setAnswer("知识库中暂时没有与您的问题相关的资料, 请先导入知识文档, 或换个问法试试。");
+            empty.setSources(List.of());
+            return empty;
         }
 
         StringBuilder context = new StringBuilder();
-        for (int i = 0; i < contents.size(); i++) {
-            context.append(i + 1).append(". ").append(contents.get(i).textSegment().text()).append('\n');
+        for (int i = 0; i < matches.size(); i++) {
+            context.append(i + 1).append(". ").append(matches.get(i).embedded().text()).append('\n');
         }
 
         String systemText = "你是知识库问答助手。请仅依据下面提供的参考资料回答用户的问题; "
@@ -425,7 +428,29 @@ public class RagServiceImpl implements RagService {
         var response = chatModel.chat(ChatRequest.builder()
                 .messages(List.of(SystemMessage.from(systemText), UserMessage.from(question)))
                 .build());
-        return response.aiMessage().text();
+
+        RagAnswerVO vo = new RagAnswerVO();
+        vo.setAnswer(response.aiMessage().text());
+        vo.setSources(sources);
+        return vo;
+    }
+
+    /**
+     * 检索片段 → 引用来源 VO: 文档名/docId 来自片段元数据, 匹配度 = 相似度分数 × 100,
+     * 全文供详情展示, 摘要截断供列表展示
+     */
+    private RagSourceVO toSource(EmbeddingMatch<TextSegment> match) {
+        TextSegment segment = match.embedded();
+        Metadata meta = segment.metadata();
+        RagSourceVO vo = new RagSourceVO();
+        String docId = meta.getString(META_DOC_ID);
+        vo.setDocId(docId == null || docId.isBlank() ? null : Long.valueOf(docId));
+        vo.setFileName(meta.getString(META_FILE_NAME));
+        vo.setScore((int) Math.round(match.score() * 100));
+        String text = segment.text();
+        vo.setText(text);
+        vo.setSnippet(text.length() > SNIPPET_MAX ? text.substring(0, SNIPPET_MAX) + "…" : text);
+        return vo;
     }
 
     @Override

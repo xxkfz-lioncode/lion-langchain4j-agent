@@ -1,6 +1,7 @@
 package com.lion.agent.ai.rag.service;
 
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
+import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
@@ -77,9 +78,9 @@ public interface RagService {
      * 知识库问答: ContentRetriever 检索相关片段 → 组装参考上下文 → 千问生成回答(阻塞式整段返回)
      *
      * @param question 用户问题
-     * @return 基于知识库内容的回答
+     * @return 回答文本 + 引用来源列表(检索层注入, 含文档名/匹配度/片段原文)
      */
-    String answer(String question);
+    RagAnswerVO answer(String question);
 
     /** 当前知识库总片段数(数据库中成功文档片段数之和) */
     long size();

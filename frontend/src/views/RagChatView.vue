@@ -32,11 +32,38 @@
               <span class="thinking-label">思考中</span>
               <span class="thinking-dots"><i></i><i></i><i></i></span>
             </div>
-            <div
-              v-else-if="item.role === 'assistant'"
-              class="msg-bubble markdown-body"
-              v-html="renderMd(item.content) + (item.streaming ? CURSOR_HTML : '')"
-            ></div>
+            <!-- AI 回答: markdown 气泡 + 引用来源折叠条(检索层注入, 与提示词片段一一对应) -->
+            <div v-else-if="item.role === 'assistant'" class="ai-block">
+              <div
+                class="msg-bubble markdown-body"
+                v-html="renderMd(item.content) + (item.streaming ? CURSOR_HTML : '')"
+              ></div>
+              <div
+                v-if="!item.streaming && item.sources && item.sources.length"
+                class="sources-box"
+              >
+                <button class="sources-toggle" type="button" @click="item.sourcesOpen = !item.sourcesOpen">
+                  <el-icon><Collection /></el-icon>
+                  引用来源 · {{ item.sources.length }} 条
+                  <el-icon class="toggle-arrow" :class="{ open: item.sourcesOpen }"><ArrowDown /></el-icon>
+                </button>
+                <div v-if="item.sourcesOpen" class="sources-list">
+                  <div
+                    v-for="(s, si) in item.sources"
+                    :key="si"
+                    class="source-item"
+                    @click="openSource(s)"
+                  >
+                    <div class="source-head">
+                      <span class="source-idx">{{ si + 1 }}</span>
+                      <span class="source-name" :title="s.fileName">{{ s.fileName || '未知文档' }}</span>
+                      <span v-if="s.score != null" class="source-score">{{ s.score }}%</span>
+                    </div>
+                    <div class="source-snippet">{{ s.snippet }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div v-else class="msg-bubble">{{ item.content }}</div>
           </div>
         </div>
@@ -73,13 +100,24 @@
         </el-button>
       </footer>
     </div>
+
+    <!-- 引用来源详情抽屉: 展示片段全文 -->
+    <el-drawer v-model="sourceDrawer" size="40%" :with-header="true">
+      <template #header>
+        <div class="drawer-title">
+          <span class="drawer-name">{{ activeSource?.fileName || '未知文档' }}</span>
+          <span v-if="activeSource?.score != null" class="source-score">{{ activeSource.score }}%</span>
+        </div>
+      </template>
+      <pre class="drawer-text">{{ activeSource?.text }}</pre>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Brush, Reading } from '@element-plus/icons-vue'
+import { Brush, Reading, Collection, ArrowDown } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import { ragChat, getRagDocuments } from '@/api/rag'
@@ -135,6 +173,16 @@ async function loadKnowledgeStatus() {
 
 // ---------------- 知识问答 ----------------
 
+/** 引用来源详情抽屉 */
+const sourceDrawer = ref(false)
+const activeSource = ref(null)
+
+/** 打开某条引用的片段全文 */
+function openSource(s) {
+  activeSource.value = s
+  sourceDrawer.value = true
+}
+
 async function handleSend() {
   const text = input.value.trim()
   if (!text || loading.value) return
@@ -149,15 +197,17 @@ async function handleSend() {
 
   messages.value.push({ role: 'user', content: text })
   input.value = ''
-  const aiMsg = { role: 'assistant', content: '', streaming: true }
+  const aiMsg = { role: 'assistant', content: '', streaming: true, sources: [], sourcesOpen: false }
   messages.value.push(aiMsg)
   loading.value = true
   scrollToBottom()
 
   try {
-    const reply = (await ragChat(text)) || ''
+    const reply = (await ragChat(text)) || {}
     aiMsg.streaming = false
-    if (!reply) {
+    const answer = reply.answer || ''
+    aiMsg.sources = reply.sources || []
+    if (!answer) {
       aiMsg.content = '(空回复)'
       loading.value = false
       scrollToBottom()
@@ -165,15 +215,15 @@ async function handleSend() {
     }
     // 整段返回后用打字机逐字吐出, 保证阅读节奏
     let shown = 0
-    const step = Math.max(1, Math.round(reply.length / 40))
+    const step = Math.max(1, Math.round(answer.length / 40))
     function pump() {
-      shown = Math.min(reply.length, shown + step)
-      aiMsg.content = reply.slice(0, shown)
+      shown = Math.min(answer.length, shown + step)
+      aiMsg.content = answer.slice(0, shown)
       scrollToBottom()
-      if (shown < reply.length) {
+      if (shown < answer.length) {
         setTimeout(pump, 16)
       } else {
-        aiMsg.content = reply
+        aiMsg.content = answer
         loading.value = false
         scrollToBottom()
       }
@@ -334,11 +384,146 @@ onMounted(() => {
   word-break: break-word;
 }
 
+/* AI 消息块: 气泡 + 引用来源条纵向排列 */
+.ai-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
 .msg-row.assistant .msg-bubble {
   background: #fff;
   color: #303133;
   border: 1px solid #e4e7ed;
   border-top-left-radius: 2px;
+}
+
+/* ---------- 引用来源折叠条 ---------- */
+.sources-box {
+  width: 100%;
+  max-width: 560px;
+}
+
+.sources-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #2d6cdf;
+  background: #f0f6ff;
+  border: 1px solid #d8e6ff;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.sources-toggle:hover {
+  background: #e2eeff;
+}
+
+.toggle-arrow {
+  transition: transform 0.2s;
+}
+
+.toggle-arrow.open {
+  transform: rotate(180deg);
+}
+
+.sources-list {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-item {
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.source-item:hover {
+  border-color: #2d6cdf;
+  box-shadow: 0 1px 6px rgba(45, 108, 223, 0.12);
+}
+
+.source-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.source-idx {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: #eef4ff;
+  color: #2d6cdf;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.source-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-score {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #67c23a;
+  background: #f0f9eb;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.source-snippet {
+  margin-top: 5px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 抽屉里的片段全文 */
+.drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.drawer-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+  color: #303133;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
 }
 
 .msg-row.user .msg-bubble {
