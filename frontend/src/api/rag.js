@@ -11,10 +11,10 @@ export const uploadRagFile = (file) => {
 }
 
 /**
- * 解析文档入库(切分 + 向量化, 用户显式触发; 对已解析文档重复调用 = 重新解析, 先清旧向量再重建)
+ * 触发解析(异步, 立即返回; 对已解析文档重复调用 = 重新解析, 先清旧向量再重建)
  * 切分方式可选: options = { splitterType, segmentSize, overlap, pattern }
  * (只传 splitterType = 用该方式默认参数; 都不传 = 后端默认递归切分)
- * 返回 { id, fileName, fileSize, fileType, segments, total, splitterType, segmentSize, overlapSize }
+ * 返回 { id, fileName, status: 2, progress: 0, retryCount } — 进度经 getRagDocuments 轮询获取
  */
 export const parseRagDocument = (id, options = {}) => {
   const params = new URLSearchParams()
@@ -33,7 +33,7 @@ export const parseRagDocument = (id, options = {}) => {
  */
 export const getRagSplitters = () => request.get('/api/rag/splitters')
 
-/** 知识库文档列表(按上传时间倒序): [{ id, fileName, fileSize, fileType, segmentCount, status, splitterType, segmentSize, overlapSize, createTime }] */
+/** 知识库文档列表(按上传时间倒序): [{ id, fileName, ..., status(0待解析/1已解析/2解析中/3失败), progress, errorMsg, retryCount, parseTime, ... }] */
 export const getRagDocuments = () => request.get('/api/rag/documents')
 
 /** 删除单个文档(同时删除该文件全部向量) */

@@ -66,15 +66,21 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100" align="center">
+        <el-table-column label="状态" width="120" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.status === 0" type="warning" effect="light" round>待解析</el-tag>
+            <el-tooltip v-else-if="row.status === 2" content="后台解析中, 进度自动刷新" placement="top">
+              <el-tag type="primary" effect="light" round>解析中 {{ row.progress ?? 0 }}%</el-tag>
+            </el-tooltip>
+            <el-tooltip v-else-if="row.status === 3" :content="row.errorMsg || '解析失败'" placement="top">
+              <el-tag type="danger" effect="light" round>解析失败</el-tag>
+            </el-tooltip>
             <el-tag v-else type="success" effect="light" round>已解析</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="片段数" width="90" align="center">
           <template #default="{ row }">
-            {{ row.status === 0 ? '-' : row.segmentCount }}
+            {{ row.status === 1 ? row.segmentCount : '-' }}
           </template>
         </el-table-column>
         <el-table-column label="大小" width="100" align="center">
@@ -96,15 +102,15 @@
             <el-button
               link
               type="primary"
-              :disabled="parsingId !== null"
+              :disabled="row.status === 2"
               @click="openParseDialog([row])"
             >
-              {{ row.status === 0 ? '解析' : '重新解析' }}
+              {{ row.status === 3 ? '重试解析' : row.status === 0 ? '解析' : '重新解析' }}
             </el-button>
-            <el-button link type="danger" :disabled="parsingId !== null" @click="handleDelete(row)">
+            <el-button link type="danger" :disabled="row.status === 2" @click="handleDelete(row)">
               删除
             </el-button>
-            <el-button v-if="row.filePath" link :disabled="parsingId !== null" @click="handleDownload(row)">
+            <el-button v-if="row.filePath" link @click="handleDownload(row)">
               下载
             </el-button>
           </template>
@@ -183,7 +189,7 @@
 
       <template #footer>
         <el-button @click="parseDialog.visible = false">取消</el-button>
-        <el-button type="primary" :loading="parsingId !== null" @click="confirmParse">
+        <el-button type="primary" :loading="triggering" @click="confirmParse">
           开始解析
         </el-button>
       </template>
@@ -192,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled, Document, Refresh, Search } from '@element-plus/icons-vue'
 import {
@@ -350,10 +356,10 @@ async function handleUpload({ file, onSuccess, onError }) {
   }
 }
 
-// ---------------- 解析(弹窗交互) ----------------
+// ---------------- 解析(异步触发 + 轮询进度) ----------------
 
-/** 正在解析的文档 id(串行解析时指向当前一条, 控制按钮 loading/禁用) */
-const parsingId = ref(null)
+/** 解析任务提交中(弹窗按钮 loading) */
+const triggering = ref(false)
 
 /** 解析弹窗: targets = 待解析文档列表 */
 const parseDialog = ref({ visible: false, targets: [] })
@@ -362,40 +368,82 @@ const reParseCountInDialog = computed(
   () => parseDialog.value.targets.filter((f) => f.status === 1).length
 )
 
-/** 打开解析弹窗(单条或批量入口统一走这里) */
+/** 打开解析弹窗(单条或批量入口统一走这里); 解析中的文档不可重复触发 */
 function openParseDialog(targets) {
-  if (!targets.length) return
-  parseDialog.value = { visible: true, targets }
+  const usable = targets.filter((f) => f.status !== 2)
+  if (!usable.length) {
+    ElMessage.warning('所选文档都在解析中, 请等待完成')
+    return
+  }
+  parseDialog.value = { visible: true, targets: usable }
 }
 
-/** 弹窗确认: 逐个串行解析(避免并发打满 embedding 限流), 结束后统一刷新 */
+/** 弹窗确认: 逐个提交解析任务(触发即返回), 提交后启动轮询看进度 */
 async function confirmParse() {
   const targets = parseDialog.value.targets
   parseDialog.value.visible = false
   saveSplitPreference()
+  triggering.value = true
   let ok = 0
   let fail = 0
   try {
     for (const f of targets) {
-      parsingId.value = f.id
       try {
-        const data = await parseRagDocument(f.id, splitOptions())
+        await parseRagDocument(f.id, splitOptions())
         ok++
-        ElMessage.success(`「${data.fileName}」解析完成, ${splitterLabel(data)} 入库 ${data.segments} 个片段`)
       } catch (e) {
         fail++
-        ElMessage.error(`「${f.fileName}」解析失败: ${e.message || '未知错误'}`)
+        ElMessage.error(`「${f.fileName}」解析触发失败: ${e.message || '未知错误'}`)
       }
     }
   } finally {
-    parsingId.value = null
-    await loadDocuments()
+    triggering.value = false
   }
-  if (ok > 0 && fail === 0) {
-    if (targets.length > 1) ElMessage.success(`批量解析完成: ${ok} 个文档已入库`)
-  } else if (fail > 0) {
-    ElMessage.warning(`解析结束: 成功 ${ok} 个, 失败 ${fail} 个(失败的可单独重试)`)
+  if (ok > 0) {
+    ElMessage.success(`已提交 ${ok} 个解析任务, 进度将自动刷新`)
+    await loadDocuments(true)
+    startParsePolling()
   }
+  if (fail > 0 && ok === 0) {
+    ElMessage.warning('解析任务未能启动, 请稍后重试')
+  }
+}
+
+// ---------------- 解析进度轮询 ----------------
+
+/** 轮询定时器(存在"解析中"文档时每 1.5s 刷列表) */
+let pollTimer = null
+
+/** 刷新前的状态快照(用于"解析完成/失败"一次性提示) */
+let statusSnapshot = {}
+
+function startParsePolling() {
+  if (pollTimer) return
+  pollTimer = setInterval(async () => {
+    if (!files.value.some((f) => f.status === 2)) {
+      stopParsePolling()
+      return
+    }
+    // 记录刷新前状态 → 静默刷新 → 对状态发生迁移的文档给一次性提示
+    statusSnapshot = Object.fromEntries(files.value.map((f) => [f.id, f.status]))
+    await loadDocuments(true)
+    for (const f of files.value) {
+      const prev = statusSnapshot[f.id]
+      if (prev === 2 && f.status === 1) {
+        ElMessage.success(`「${f.fileName}」解析完成, 入库 ${f.segmentCount} 个片段`)
+      } else if (prev === 2 && f.status === 3) {
+        ElMessage.error(`「${f.fileName}」解析失败: ${f.errorMsg || '未知错误'}`)
+      }
+    }
+  }, 1500)
+}
+
+function stopParsePolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+  statusSnapshot = {}
 }
 
 // ---------------- 删除 ----------------
@@ -511,9 +559,9 @@ function formatTimeText(t) {
   )
 }
 
-/** 拉取文档列表并补充展示字段, 同时同步总片段数 */
-async function loadDocuments() {
-  loadingDocs.value = true
+/** 拉取文档列表并补充展示字段, 同时同步总片段数; silent=true 用于轮询(不闪 loading) */
+async function loadDocuments(silent = false) {
+  if (!silent) loadingDocs.value = true
   try {
     const list = (await getRagDocuments()) || []
     files.value = list.map((d) => ({
@@ -524,12 +572,16 @@ async function loadDocuments() {
       splitterTitle: `切分方式: ${splitterLabel(d)}${d.splitterPattern ? ` · 正则 ${d.splitterPattern}` : ''}`
     }))
     segments.value = list.reduce((sum, d) => sum + (d.segmentCount || 0), 0)
+    // 页面加载/刷新时若已有解析中的任务(如后台刚重启), 自动接续轮询
+    if (list.some((d) => d.status === 2)) startParsePolling()
   } catch (e) {
     // 拉取失败不阻断页面
   } finally {
-    loadingDocs.value = false
+    if (!silent) loadingDocs.value = false
   }
 }
+
+onUnmounted(stopParsePolling)
 
 onMounted(async () => {
   await loadSplitters()

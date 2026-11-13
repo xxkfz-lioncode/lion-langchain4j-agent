@@ -1,6 +1,7 @@
 package com.lion.agent.ai.rag.controller;
 
 import com.lion.agent.ai.rag.pojo.dto.RagChatRequest;
+import com.lion.agent.ai.rag.util.RagUtils;
 import com.lion.agent.common.R;
 import com.lion.agent.common.exception.BusinessException;
 import com.lion.agent.ai.rag.service.RagService;
@@ -8,8 +9,8 @@ import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
+import com.lion.agent.ai.rag.pojo.vo.RagParseProgressVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
-import com.lion.agent.ai.rag.pojo.vo.RagUploadVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -37,7 +38,7 @@ import java.util.List;
  * 上传与解析分两阶段(上传零模型成本, 解析由用户显式触发):
  * <ol>
  *   <li>上传文档(仅保存):       POST   /api/rag/upload (multipart, 支持 .pdf/.txt/.md, 上限 20MB)</li>
- *   <li>解析文档(切分+向量化):  POST   /api/rag/documents/{id}/parse (可选切分参数; 已解析文档重复调用即重新解析)</li>
+ *   <li>解析文档(异步触发):     POST   /api/rag/documents/{id}/parse (校验后立即返回, 进度经列表轮询)</li>
  *   <li>下载文档原文:           GET    /api/rag/documents/{id}/download (鉴权后流式回吐)</li>
  *   <li>知识库问答:             POST   /api/rag/chat  body={"question":"你的问题"}</li>
  *   <li>文档列表:               GET    /api/rag/documents (按上传时间倒序, 含解析状态)</li>
@@ -73,34 +74,32 @@ public class RagController {
             throw new BusinessException("请选择要上传的文件");
         }
         String name = file.getOriginalFilename();
-        String lower = (name == null ? "" : name).toLowerCase();
-        boolean supported = lower.endsWith(".txt")
-                || lower.endsWith(".md")
-                || lower.endsWith(".markdown")
-                || lower.endsWith(".pdf");
-        if (!supported) {
+        if (!RagUtils.isSupported(name)) {
             throw new BusinessException("仅支持 .txt / .md / .pdf 格式的知识文档");
         }
         byte[] data;
         try {
             data = file.getBytes();
         } catch (Exception e) {
-            throw new BusinessException("读取上传文件失败: " + e.getMessage());
+            throw new BusinessException("读取上传文件失败: " + RagUtils.rootMessage(e));
         }
         return R.ok(ragService.uploadDocument(name, file.getSize(), data));
     }
 
     /**
-     * 解析文档入库(切分 + 向量化, 用户显式触发; 对已解析文档重复调用即重新解析)
+     * 触发文档解析(异步, 立即返回; 对已解析文档重复调用即重新解析)
      * <p>
      * 切分方式可由前端指定(见 GET /api/rag/splitters): splitterType 选方式,
      * segmentSize / overlap / pattern 覆盖默认参数, 不传则用该方式的默认值。
+     * 进度通过文档列表(GET /api/rag/documents)轮询 status/progress 获取。
      */
-    @Operation(summary = "解析文档入库",
-            description = "对已上传(待解析)文档执行切分+向量化入库; 对已解析文档重复调用 = 重新解析"
-                    + "(先清空旧向量再按新配置重建); 切分方式由 splitterType 等可选参数指定, 不传用默认值")
+    @Operation(summary = "触发解析(异步)",
+            description = "校验并置'解析中'后立即返回; 切分+向量化由后台线程池执行, "
+                    + "进度/结果经文档列表的 status/progress/errorMsg 字段轮询获取; "
+                    + "对已解析文档重复调用 = 重新解析(先清旧向量再按新配置重建); "
+                    + "切分方式由 splitterType 等可选参数指定, 不传用默认值")
     @PostMapping("/documents/{id}/parse")
-    public R<RagUploadVO> parse(
+    public R<RagParseProgressVO> parse(
             @Parameter(description = "文档id", required = true, example = "1")
             @PathVariable("id") Long id,
             @Parameter(description = "切分方式, 见 GET /api/rag/splitters", example = "PARAGRAPH")

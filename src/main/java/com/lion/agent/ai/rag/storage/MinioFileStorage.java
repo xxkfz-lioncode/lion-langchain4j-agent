@@ -1,5 +1,6 @@
 package com.lion.agent.ai.rag.storage;
 
+import com.lion.agent.ai.rag.util.RagUtils;
 import com.lion.agent.common.exception.BusinessException;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
@@ -72,7 +73,7 @@ public class MinioFileStorage implements FileStorage {
                     .build());
             return objectKey;
         } catch (Exception e) {
-            throw new BusinessException("文件保存到 MinIO 失败: " + rootMessage(e));
+            throw new BusinessException("文件保存到 MinIO 失败: " + RagUtils.rootMessage(e));
         }
     }
 
@@ -85,9 +86,9 @@ public class MinioFileStorage implements FileStorage {
             if ("NoSuchKey".equals(e.errorResponse().code())) {
                 throw new BusinessException("文件不存在(" + objectKey + "), 请删除该文档后重新上传");
             }
-            throw new BusinessException("文件从 MinIO 读取失败: " + rootMessage(e));
+            throw new BusinessException("文件从 MinIO 读取失败: " + RagUtils.rootMessage(e));
         } catch (Exception e) {
-            throw new BusinessException("文件从 MinIO 读取失败: " + rootMessage(e));
+            throw new BusinessException("文件从 MinIO 读取失败: " + RagUtils.rootMessage(e));
         }
     }
 
@@ -101,7 +102,7 @@ public class MinioFileStorage implements FileStorage {
             client().removeObject(RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build());
         } catch (Exception e) {
             // 删除失败仅告警, 不阻断文档删除主流程(对象残留可在 MinIO 控制台手工清理)
-            log.warn("删除 MinIO 对象[{}]失败: {}", objectKey, rootMessage(e));
+            log.warn("删除 MinIO 对象[{}]失败: {}", objectKey, RagUtils.rootMessage(e));
         }
     }
 
@@ -117,7 +118,7 @@ public class MinioFileStorage implements FileStorage {
         } catch (ErrorResponseException e) {
             return false;
         } catch (Exception e) {
-            log.warn("检查 MinIO 对象[{}]失败: {}", objectKey, rootMessage(e));
+            log.warn("检查 MinIO 对象[{}]失败: {}", objectKey, RagUtils.rootMessage(e));
             return false;
         }
     }
@@ -153,7 +154,7 @@ public class MinioFileStorage implements FileStorage {
                 log.info("MinIO bucket[{}]不存在, 已自动创建", bucket);
             }
         } catch (Exception e) {
-            throw new BusinessException("MinIO bucket 初始化失败: " + rootMessage(e));
+            throw new BusinessException("MinIO bucket 初始化失败: " + RagUtils.rootMessage(e));
         }
     }
 
@@ -165,15 +166,5 @@ public class MinioFileStorage implements FileStorage {
             out.write(buf, 0, n);
         }
         return out.toByteArray();
-    }
-
-    /** 取根因消息(MinIO SDK 异常链较深, 直接 getMessage 常为 null) */
-    private String rootMessage(Exception e) {
-        Throwable t = e;
-        while (t.getCause() != null && t.getCause() != t) {
-            t = t.getCause();
-        }
-        String msg = t.getMessage();
-        return msg == null || msg.isBlank() ? e.getClass().getSimpleName() : msg;
     }
 }

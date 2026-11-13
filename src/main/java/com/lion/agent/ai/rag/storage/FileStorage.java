@@ -1,5 +1,7 @@
 package com.lion.agent.ai.rag.storage;
 
+import com.lion.agent.ai.rag.util.RagUtils;
+
 /**
  * RAG 知识文档原始文件存储抽象
  * <p>
@@ -57,15 +59,10 @@ public interface FileStorage {
     boolean exists(String objectKey);
 
     /**
-     * 去掉路径部分与非法字符(防目录穿越 / 对象Key非法字符), 两个存储实现共用
+     * 去掉路径部分与非法字符(防目录穿越 / 对象Key非法字符), 两个存储实现共用;
+     * 实现委托 {@link RagUtils#sanitizeFileName}(Hutool FileNameUtil)
      */
     static String sanitizeFileName(String fileName) {
-        String name = fileName.replace('\\', '/');
-        int slash = name.lastIndexOf('/');
-        if (slash >= 0) {
-            name = name.substring(slash + 1);
-        }
-        String cleaned = name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-        return cleaned.isEmpty() ? "unnamed" : cleaned;
+        return RagUtils.sanitizeFileName(fileName);
     }
 }

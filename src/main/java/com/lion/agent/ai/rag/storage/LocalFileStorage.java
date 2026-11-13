@@ -1,5 +1,6 @@
 package com.lion.agent.ai.rag.storage;
 
+import com.lion.agent.ai.rag.util.RagUtils;
 import com.lion.agent.common.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,7 +49,7 @@ public class LocalFileStorage implements FileStorage {
             Files.write(target, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
             return objectKey;
         } catch (IOException e) {
-            throw new BusinessException("文件保存失败: " + e.getMessage());
+            throw new BusinessException("文件保存失败: " + RagUtils.rootMessage(e));
         }
     }
 
@@ -61,7 +62,7 @@ public class LocalFileStorage implements FileStorage {
         try {
             return Files.readAllBytes(path);
         } catch (IOException e) {
-            throw new BusinessException("文件读取失败: " + e.getMessage());
+            throw new BusinessException("文件读取失败: " + RagUtils.rootMessage(e));
         }
     }
 

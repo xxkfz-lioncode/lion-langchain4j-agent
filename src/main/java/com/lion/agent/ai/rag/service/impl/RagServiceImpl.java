@@ -6,15 +6,15 @@ import com.lion.agent.common.exception.BusinessException;
 
 import com.lion.agent.ai.rag.pojo.entity.RagDocumentEntity;
 import com.lion.agent.ai.rag.mapper.RagDocumentMapper;
+import com.lion.agent.ai.rag.service.RagParseWorker;
 import com.lion.agent.ai.rag.service.RagService;
 import com.lion.agent.ai.rag.splitter.DocumentSplitterFactory;
 import com.lion.agent.ai.rag.splitter.ResolvedSplitter;
 import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.splitter.SplitterType;
 import com.lion.agent.ai.rag.storage.FileStorage;
-import dev.langchain4j.data.document.Document;
+import com.lion.agent.ai.rag.util.RagUtils;
 import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -30,11 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayInputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -72,8 +69,6 @@ public class RagServiceImpl implements RagService {
     private static final int MAX_RESULTS = 2;
     /** 相似度低于该值的片段将被过滤 */
     private static final double MIN_SCORE = 0.75;
-    /** 向量化单批最大条数(DashScope text-embedding-v3 限制: 单请求最多 10 条 input) */
-    private static final int EMBEDDING_BATCH_SIZE = 10;
     /** 引用来源摘要截断长度(超出部分以 … 结尾, 全文走 text 字段) */
     private static final int SNIPPET_MAX = 120;
 
@@ -92,12 +87,15 @@ public class RagServiceImpl implements RagService {
     private final Map<String, FileStorage> storages;
     /** 激活存储(lion.rag.storage-type): 新上传文件落这里 */
     private final FileStorage activeStorage;
+    /** 异步解析执行器: 校验/置状态后把耗时任务交给它(独立线程池, 不占 HTTP 线程) */
+    private final RagParseWorker parseWorker;
 
     public RagServiceImpl(ChatModel chatModel, EmbeddingModel embeddingModel,
                           EmbeddingStore<TextSegment> embeddingStore,
                           DocumentSplitterFactory splitterFactory,
                           RagDocumentMapper ragDocumentMapper,
                           List<FileStorage> storageImpls,
+                          RagParseWorker parseWorker,
                           @Value("${lion.rag.storage-type:local}") String activeStorageType) {
         this.chatModel = chatModel;
         this.embeddingModel = embeddingModel;
@@ -106,6 +104,7 @@ public class RagServiceImpl implements RagService {
         this.embeddingStore = embeddingStore;
         this.splitterFactory = splitterFactory;
         this.ragDocumentMapper = ragDocumentMapper;
+        this.parseWorker = parseWorker;
         this.storages = storageImpls.stream()
                 .collect(Collectors.toMap(FileStorage::type, Function.identity()));
         FileStorage active = storages.get(activeStorageType);
@@ -130,7 +129,7 @@ public class RagServiceImpl implements RagService {
         if (data == null || data.length == 0) {
             throw new BusinessException("文件内容为空");
         }
-        String type = fileTypeOf(fileName);
+        String type = RagUtils.typeOf(fileName);
 
         // 1. 落 rag_document 元数据: 状态=待解析(0), 片段数 0, 切分方式留空(解析时才指定)
         RagDocumentEntity entity = new RagDocumentEntity();
@@ -154,12 +153,12 @@ public class RagServiceImpl implements RagService {
         } catch (Exception e) {
             // 失败回滚: 删元数据记录 + 删已保存文件(此阶段无向量, 无需清理)
             ragDocumentMapper.deleteById(docId);
-            throw new BusinessException("文件上传失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+            throw new BusinessException("文件上传失败: " + RagUtils.rootMessage(e));
         }
     }
 
     @Override
-    public RagUploadVO parseDocument(Long id, SplitterConfig splitConfig) {
+    public RagParseProgressVO parseDocument(Long id, SplitterConfig splitConfig) {
         if (id == null) {
             throw new BusinessException("文档 id 不能为空");
         }
@@ -170,76 +169,36 @@ public class RagServiceImpl implements RagService {
         if (entity.getFilePath() == null || entity.getFilePath().isBlank()) {
             throw new BusinessException("文档缺少已上传的原始文件, 请删除后重新上传");
         }
+        if (entity.getStatus() != null && entity.getStatus() == 2) {
+            throw new BusinessException("文档正在解析中, 请等待完成后再操作");
+        }
 
         // 0. 先解析切分参数(非法参数直接报错, 不动库不动向量)
         ResolvedSplitter resolved = splitterFactory.resolve(splitConfig);
 
+        // 1. 重新解析: 先清空该文档全部旧向量(失败可重试, 片段以最后成功的一次为准)
         boolean isReParse = entity.getStatus() != null && entity.getStatus() == 1;
         if (isReParse) {
-            // 重新解析: 先清空该文档全部旧向量, 再按新配置重建
             embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID).isEqualTo(String.valueOf(id)));
             log.info("文档[{}]重新解析: 已清空旧向量 {} 个", entity.getFileName(), entity.getSegmentCount());
         }
 
-        try {
-            // 1. 从记录对应的存储读取原始文件(local 存量数据/MinIO 新数据各自路由)
-            FileStorage storage = storageOf(entity);
-            byte[] data = storage.load(entity.getFilePath());
+        // 2. 置"解析中"并把切分方案持久化到记录上(异步任务据此重建切分器), 触发即返回
+        entity.setStatus(2);
+        entity.setProgress(0);
+        entity.setErrorMsg("");
+        entity.setRetryCount((entity.getRetryCount() == null ? 0 : entity.getRetryCount()) + 1);
+        entity.setSplitterType(resolved.type().getCode());
+        entity.setSegmentSize(resolved.segmentSize());
+        entity.setOverlapSize(resolved.overlap());
+        entity.setSplitterPattern(resolved.pattern() == null ? "" : resolved.pattern());
+        entity.setParseTime(null);
+        ragDocumentMapper.updateById(entity);
 
-            // 2. 解析文档内容(pdf 交给 ApachePdfBoxDocumentParser 流式解析, 文本类 UTF-8 读取)
-            Document document = parse(entity.getFileType(), data);
-
-            // 3. 按所选方式切分(滤掉空片段) → 每段挂 docId/fileName 元数据 → 分批向量化入库
-            List<TextSegment> segments = resolved.splitter().split(document).stream()
-                    .filter(segment -> segment.text() != null && !segment.text().isBlank())
-                    .toList();
-            if (!segments.isEmpty()) {
-                segments = attachMetadata(segments, id, entity.getFileName());
-                for (int i = 0; i < segments.size(); i += EMBEDDING_BATCH_SIZE) {
-                    List<TextSegment> batch =
-                            segments.subList(i, Math.min(i + EMBEDDING_BATCH_SIZE, segments.size()));
-                    List<Embedding> embeddings = embedBatch(batch);
-                    embeddingStore.addAll(embeddings, batch);
-                    log.info("文档[{}]向量化入库中: {}/{} 片段", entity.getFileName(),
-                            Math.min(i + EMBEDDING_BATCH_SIZE, segments.size()), segments.size());
-                }
-            }
-
-            // 4. 回填状态=已解析 / 片段数 / 本次切分方案
-            entity.setStatus(1);
-            entity.setSegmentCount(segments.size());
-            entity.setSplitterType(resolved.type().getCode());
-            entity.setSegmentSize(resolved.segmentSize());
-            entity.setOverlapSize(resolved.overlap());
-            entity.setSplitterPattern(resolved.pattern() == null ? "" : resolved.pattern());
-            ragDocumentMapper.updateById(entity);
-            log.info("文档[{}]解析完成: {}, 入库 {} 个片段, 当前知识库共 {} 片段",
-                    entity.getFileName(), resolved.display(), segments.size(), size());
-
-            RagUploadVO vo = new RagUploadVO();
-            vo.setId(id);
-            vo.setFileName(entity.getFileName());
-            vo.setFileSize(entity.getFileSize());
-            vo.setFileType(entity.getFileType());
-            vo.setFilePath(entity.getFilePath());
-            vo.setSegments(segments.size());
-            vo.setTotal(size());
-            vo.setSplitterType(resolved.type().getCode());
-            vo.setSegmentSize(resolved.segmentSize());
-            vo.setOverlapSize(resolved.overlap());
-            return vo;
-        } catch (Exception e) {
-            // 解析失败: 清理本次已写入的部分向量, 文档保持"待解析"可重试(记录与文件都保留)
-            try {
-                embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID).isEqualTo(String.valueOf(id)));
-            } catch (Exception cleanup) {
-                log.warn("清理文档[{}]残留向量失败: {}", entity.getFileName(), cleanup.getMessage());
-            }
-            entity.setStatus(0);
-            entity.setSegmentCount(0);
-            ragDocumentMapper.updateById(entity);
-            throw new BusinessException("文档解析失败: " + (e.getMessage() == null ? "未知错误" : e.getMessage()));
-        }
+        // 3. 交给独立线程池异步执行(读文件/切分/向量化为耗时任务, 不占 HTTP 线程)
+        parseWorker.executeParse(id);
+        log.info("文档[{}]解析任务已提交(异步执行)", entity.getFileName());
+        return toProgressVO(entity);
     }
 
     /** 实体 → 列表 VO(字段一一对应) */
@@ -252,11 +211,27 @@ public class RagServiceImpl implements RagService {
         vo.setFilePath(e.getFilePath());
         vo.setSegmentCount(e.getSegmentCount());
         vo.setStatus(e.getStatus());
+        vo.setProgress(e.getProgress());
+        vo.setErrorMsg(e.getErrorMsg());
+        vo.setRetryCount(e.getRetryCount());
+        vo.setParseTime(e.getParseTime());
         vo.setSplitterType(e.getSplitterType());
         vo.setSegmentSize(e.getSegmentSize());
         vo.setOverlapSize(e.getOverlapSize());
         vo.setSplitterPattern(e.getSplitterPattern());
         vo.setCreateTime(e.getCreateTime());
+        return vo;
+    }
+
+    /** 实体 → 解析进度 VO(触发接口返回值) */
+    private RagParseProgressVO toProgressVO(RagDocumentEntity e) {
+        RagParseProgressVO vo = new RagParseProgressVO();
+        vo.setId(e.getId());
+        vo.setFileName(e.getFileName());
+        vo.setStatus(e.getStatus());
+        vo.setProgress(e.getProgress());
+        vo.setErrorMsg(e.getErrorMsg());
+        vo.setRetryCount(e.getRetryCount());
         return vo;
     }
 
@@ -304,6 +279,10 @@ public class RagServiceImpl implements RagService {
         if (entity == null) {
             throw new BusinessException("文档不存在: " + id);
         }
+        if (entity.getStatus() != null && entity.getStatus() == 2) {
+            // 解析中的文档删除会导致异步任务回写失败/残留向量, 直接拒绝
+            throw new BusinessException("文档正在解析中, 请等待解析完成后再删除");
+        }
         // 1. 先删该文档的全部向量(按 docId 元数据过滤, Milvus metadata JSON 字段支撑)
         embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID)
                 .isEqualTo(String.valueOf(id)));
@@ -332,67 +311,6 @@ public class RagServiceImpl implements RagService {
         vo.setFileType(entity.getFileType());
         vo.setData(data);
         return vo;
-    }
-
-    /**
-     * 按文件名取扩展名作为类型(pdf/txt/md/markdown → md)
-     */
-    private String fileTypeOf(String fileName) {
-        String lower = fileName.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".pdf")) {
-            return "pdf";
-        }
-        if (lower.endsWith(".markdown")) {
-            return "md";
-        }
-        if (lower.endsWith(".md")) {
-            return "md";
-        }
-        if (lower.endsWith(".txt")) {
-            return "txt";
-        }
-        int dot = lower.lastIndexOf('.');
-        return dot >= 0 ? lower.substring(dot + 1) : "";
-    }
-
-    /**
-     * 解析文件内容: pdf 交给 ApachePdfBoxDocumentParser 流式解析(直接吃字节, 不落临时盘),
-     * 其余(txt/md 等)按 UTF-8 读取字节内容
-     */
-    private Document parse(String type, byte[] data) throws Exception {
-        if ("pdf".equals(type)) {
-            return new ApachePdfBoxDocumentParser().parse(new ByteArrayInputStream(data));
-        }
-        return Document.from(new String(data, StandardCharsets.UTF_8));
-    }
-
-    /**
-     * 为片段附加 docId/fileName 元数据(追加式入库时用于按文件区分/删除)
-     */
-    private List<TextSegment> attachMetadata(List<TextSegment> segments, Long docId, String fileName) {
-        String docIdStr = String.valueOf(docId);
-        return segments.stream()
-                .map(segment -> {
-                    Metadata meta = segment.metadata().copy()
-                            .put(META_DOC_ID, docIdStr)
-                            .put(META_FILE_NAME, fileName);
-                    return TextSegment.from(segment.text(), meta);
-                })
-                .toList();
-    }
-
-    /** 批量向量化(失败自动重试 3 次, 应对 DashScope 网络抖动) */
-    private List<Embedding> embedBatch(List<TextSegment> batch) {
-        Exception last = null;
-        for (int attempt = 1; attempt <= 3; attempt++) {
-            try {
-                return embeddingModel.embedAll(batch).content();
-            } catch (Exception e) {
-                last = e;
-                log.warn("向量化失败(第 {} 条批次, 第 {} 次尝试): {}", batch.size(), attempt, e.getMessage());
-            }
-        }
-        throw new BusinessException("文档向量化失败: " + last.getMessage());
     }
 
     @Override
@@ -449,7 +367,7 @@ public class RagServiceImpl implements RagService {
         vo.setScore((int) Math.round(match.score() * 100));
         String text = segment.text();
         vo.setText(text);
-        vo.setSnippet(text.length() > SNIPPET_MAX ? text.substring(0, SNIPPET_MAX) + "…" : text);
+        vo.setSnippet(RagUtils.snippet(text, SNIPPET_MAX));
         return vo;
     }
 

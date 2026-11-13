@@ -54,8 +54,20 @@ public class RagDocumentEntity {
     /** 入库片段数(向量条数) */
     private Integer segmentCount;
 
-    /** 解析状态: 1 已解析(已入库) / 0 待解析(仅上传, 未切分向量化) */
+    /** 解析状态: 0 待解析 / 1 已解析(已入库) / 2 解析中(异步任务执行) / 3 解析失败 */
     private Integer status;
+
+    /** 解析进度(0-100, 仅解析中有意义; 由异步任务按向量化批次更新) */
+    private Integer progress;
+
+    /** 最近一次解析失败的错误原因(成功/解析中为空) */
+    private String errorMsg;
+
+    /** 累计解析触发次数(含失败, 观测用) */
+    private Integer retryCount;
+
+    /** 最近一次解析完成时间 */
+    private LocalDateTime parseTime;
 
     /** 上传时间(数据库自动维护) */
     private LocalDateTime createTime;
