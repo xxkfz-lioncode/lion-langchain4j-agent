@@ -14,6 +14,9 @@ public class RagSourceVO {
     /** 来源文档名 */
     private String fileName;
 
+    /** PDF 页码(1 起, 引用定位"第 N 页"用; txt/md 等文本类无页码为 null) */
+    private Integer page;
+
     /** 匹配度(0-100, 相似度 score × 100 取整; 供内部调试排序参考) */
     private Integer score;
 

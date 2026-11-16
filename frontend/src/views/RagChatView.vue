@@ -57,6 +57,7 @@
                     <div class="source-head">
                       <span class="source-idx">{{ si + 1 }}</span>
                       <span class="source-name" :title="s.fileName">{{ s.fileName || '未知文档' }}</span>
+                      <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
                       <span v-if="s.score != null" class="source-score">{{ s.score }}%</span>
                     </div>
                     <div class="source-snippet">{{ s.snippet }}</div>
@@ -106,6 +107,7 @@
       <template #header>
         <div class="drawer-title">
           <span class="drawer-name">{{ activeSource?.fileName || '未知文档' }}</span>
+          <span v-if="activeSource?.page != null" class="source-page">第 {{ activeSource.page }} 页</span>
           <span v-if="activeSource?.score != null" class="source-score">{{ activeSource.score }}%</span>
         </div>
       </template>
@@ -488,6 +490,15 @@ onMounted(() => {
   font-size: 11px;
   color: #67c23a;
   background: #f0f9eb;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.source-page {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #909399;
+  background: #f4f4f5;
   padding: 1px 7px;
   border-radius: 8px;
 }

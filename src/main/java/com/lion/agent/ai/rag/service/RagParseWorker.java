@@ -11,20 +11,22 @@ import com.lion.agent.ai.rag.storage.FileStorage;
 import com.lion.agent.ai.rag.util.RagUtils;
 import dev.langchain4j.data.document.Document;
 import dev.langchain4j.data.document.Metadata;
-import dev.langchain4j.data.document.parser.apache.pdfbox.ApachePdfBoxDocumentParser;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
-import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -100,15 +102,17 @@ public class RagParseWorker {
                     entity.getOverlapSize(), entity.getSplitterPattern()));
 
             // 1. 读取原始文件(按 storage_type 路由) → 解析文档内容
+            //    PDF 按页拆成多个 Document(页码进元数据), 文本类为单个 Document
             byte[] data = storageOf(entity).load(entity.getFilePath());
-            Document document = parseDocumentContent(entity.getFileType(), data);
+            List<Document> documents = parseDocuments(entity.getFileType(), data);
 
-            // 2. 切分(滤空片段) → 挂 docId/fileName 元数据 → 记 10% 进度
-            List<TextSegment> segments = resolved.splitter().split(document).stream()
-                    .filter(segment -> segment.text() != null && !segment.text().isBlank())
-                    .toList();
-            if (!segments.isEmpty()) {
-                segments = attachMetadata(segments, docId, entity.getFileName());
+            // 2. 逐个文档切分(滤空片段) → 挂 docId/fileName/页码 元数据 → 记 10% 进度
+            List<TextSegment> segments = new ArrayList<>();
+            for (Document document : documents) {
+                resolved.splitter().split(document).stream()
+                        .filter(segment -> segment.text() != null && !segment.text().isBlank())
+                        .map(segment -> attachMetadata(segment, docId, entity.getFileName(), document.metadata()))
+                        .forEach(segments::add);
             }
             updateProgress(docId, SPLIT_PROGRESS);
 
@@ -161,27 +165,50 @@ public class RagParseWorker {
     }
 
     /**
-     * 解析文件内容: pdf 交给 ApachePdfBoxDocumentParser 流式解析(直接吃字节, 不落临时盘),
-     * 其余(txt/md 等)按 UTF-8 读取字节内容
+     * 解析文件内容 → Document 列表:
+     * - pdf: 用 PDFBox 按页拆分(每页一个 Document, 页码写入元数据),
+     *   这样切分出的片段能定位到"第 N 页"(引用溯源展示用);
+     *   langchain4j 自带的 ApachePdfBoxDocumentParser 会把整本合成一个 Document, 页码信息丢失, 故弃用
+     * - txt/md 等: 整个文件一个 Document(文本类无页概念)
      */
-    private Document parseDocumentContent(String type, byte[] data) throws Exception {
-        if ("pdf".equals(type)) {
-            return new ApachePdfBoxDocumentParser().parse(new ByteArrayInputStream(data));
+    private List<Document> parseDocuments(String type, byte[] data) throws Exception {
+        if (!"pdf".equals(type)) {
+            return List.of(Document.from(new String(data, StandardCharsets.UTF_8)));
         }
-        return Document.from(new String(data, StandardCharsets.UTF_8));
+        List<Document> pages = new ArrayList<>();
+        try (PDDocument pdf = Loader.loadPDF(data)) {
+            PDFTextStripper stripper = new PDFTextStripper();
+            int pageCount = pdf.getNumberOfPages();
+            for (int p = 1; p <= pageCount; p++) {
+                stripper.setStartPage(p);
+                stripper.setEndPage(p);
+                String text = stripper.getText(pdf);
+                if (text == null || text.isBlank()) {
+                    continue; // 空白页(纯图片页)跳过
+                }
+                Metadata meta = new Metadata().put(RagServiceImpl.META_PAGE, String.valueOf(p));
+                pages.add(Document.from(text, meta));
+            }
+        }
+        if (pages.isEmpty()) {
+            throw new IllegalStateException("PDF 没有可提取的文本内容(可能是纯图片扫描件, 当前不支持 OCR)");
+        }
+        return pages;
     }
 
-    /** 为片段附加 docId/fileName 元数据(追加式入库, 用于按文件区分/删除/引用展示) */
-    private List<TextSegment> attachMetadata(List<TextSegment> segments, Long docId, String fileName) {
-        String docIdStr = String.valueOf(docId);
-        return segments.stream()
-                .map(segment -> {
-                    Metadata meta = segment.metadata().copy()
-                            .put(RagServiceImpl.META_DOC_ID, docIdStr)
-                            .put(RagServiceImpl.META_FILE_NAME, fileName);
-                    return TextSegment.from(segment.text(), meta);
-                })
-                .toList();
+    /**
+     * 为片段附加元数据(追加式入库, 用于按文件区分/删除/引用展示):
+     * docId/fileName 来自解析任务, 页码来自所属 PDF 页的文档元数据(txt/md 无页码)
+     */
+    private TextSegment attachMetadata(TextSegment segment, Long docId, String fileName, Metadata docMeta) {
+        Metadata meta = segment.metadata().copy()
+                .put(RagServiceImpl.META_DOC_ID, String.valueOf(docId))
+                .put(RagServiceImpl.META_FILE_NAME, fileName);
+        String page = docMeta == null ? null : docMeta.getString(RagServiceImpl.META_PAGE);
+        if (page != null && !page.isBlank()) {
+            meta.put(RagServiceImpl.META_PAGE, page);
+        }
+        return TextSegment.from(segment.text(), meta);
     }
 
     /** 批量向量化(失败自动重试 3 次, 应对 DashScope 网络抖动) */

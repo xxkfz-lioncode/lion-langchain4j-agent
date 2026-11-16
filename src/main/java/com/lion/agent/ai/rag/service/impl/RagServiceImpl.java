@@ -76,6 +76,8 @@ public class RagServiceImpl implements RagService {
     public static final String META_DOC_ID = "docId";
     /** 向量片段元数据: 文件名(展示/溯源用) */
     public static final String META_FILE_NAME = "fileName";
+    /** 向量片段元数据: PDF 页码(引用溯源"第 N 页"展示用; txt/md 无页码) */
+    public static final String META_PAGE = "page";
 
     private final ChatModel chatModel;
     /** 切分器工厂: 按请求参数(方式/块大小/重叠/正则)构建切分器, 支持前端自定义切分 */
@@ -364,6 +366,8 @@ public class RagServiceImpl implements RagService {
         String docId = meta.getString(META_DOC_ID);
         vo.setDocId(docId == null || docId.isBlank() ? null : Long.valueOf(docId));
         vo.setFileName(meta.getString(META_FILE_NAME));
+        String page = meta.getString(META_PAGE);
+        vo.setPage(page == null || page.isBlank() ? null : Integer.valueOf(page));
         vo.setScore((int) Math.round(match.score() * 100));
         String text = segment.text();
         vo.setText(text);

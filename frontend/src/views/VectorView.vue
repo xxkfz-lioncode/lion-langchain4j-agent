@@ -151,11 +151,6 @@
             </el-option>
           </el-select>
 
-          <span class="filter-label">每页条数</span>
-          <el-select v-model="limit" class="limit-select" size="default" @change="onFilterChange">
-            <el-option v-for="n in [10, 20, 50, 100]" :key="n" :label="n + ' 条'" :value="n" />
-          </el-select>
-
           <div class="vector-switch" title="开启后每条片段额外回传 1024 维向量本体(约 4KB/条)">
             <el-switch v-model="withVector" size="small" @change="onFilterChange" />
             <span class="vector-switch-label">显示向量</span>
@@ -209,12 +204,13 @@
         <div class="pager-row">
           <el-pagination
             v-model:current-page="page"
-            :page-size="limit"
+            v-model:page-size="limit"
             :total="total"
             :page-sizes="[10, 20, 50, 100]"
-            layout="total, prev, pager, next, jumper"
+            layout="total, sizes, prev, pager, next, jumper"
             background
             @current-change="loadSegments"
+            @size-change="onFilterChange"
           />
         </div>
       </section>
@@ -748,10 +744,6 @@ function formatVector(vector) {
 
 .filter-select {
   width: 240px;
-}
-
-.limit-select {
-  width: 110px;
 }
 
 .filter-tip {

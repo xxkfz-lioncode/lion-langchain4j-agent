@@ -48,7 +48,7 @@ export const downloadRagDocument = (id) =>
 
 /**
  * 知识库问答(阻塞式整段返回), 返回 { answer, sources }
- * sources: 引用来源 [{ docId, fileName, score(0-100), snippet(摘要), text(片段全文) }]
+ * sources: 引用来源 [{ docId, fileName, page(PDF 页码, 文本类为 null), score(0-100), snippet(摘要), text(片段全文) }]
  */
 export const ragChat = (question) => request.post('/api/rag/chat', { question })
 
