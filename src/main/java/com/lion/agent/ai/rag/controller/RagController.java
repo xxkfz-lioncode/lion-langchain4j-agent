@@ -10,6 +10,7 @@ import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagParseProgressVO;
+import com.lion.agent.ai.rag.pojo.vo.RagSegmentPageVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -117,10 +118,28 @@ public class RagController {
     /**
      * 文档列表(文件列表页数据源)
      */
-    @Operation(summary = "文档列表", description = "按上传时间倒序, 供前端文件列表展示")
+    @Operation(summary = "文档列表", description = "按编号排序, 供前端文件列表展示")
     @GetMapping("/documents")
     public R<List<RagDocumentVO>> documents() {
         return R.ok(ragService.listDocuments());
+    }
+
+    /**
+     * 文档片段明细(片段抽屉): 按片段序号升序物理分页, 支持原文关键字过滤
+     */
+    @Operation(summary = "文档片段明细", description = "rag_segment 表数据(切分原文视角), "
+            + "用于检查切分质量/核对引用溯源; keyword 按片段内容模糊过滤")
+    @GetMapping("/documents/{id}/segments")
+    public R<RagSegmentPageVO> segments(
+            @Parameter(description = "文档id", required = true, example = "1")
+            @PathVariable("id") Long id,
+            @Parameter(description = "页码(1 起)", example = "1")
+            @RequestParam(value = "page", defaultValue = "1") long page,
+            @Parameter(description = "每页条数(1~100)", example = "20")
+            @RequestParam(value = "size", defaultValue = "20") long size,
+            @Parameter(description = "片段内容关键字(可空)")
+            @RequestParam(value = "keyword", required = false) String keyword) {
+        return R.ok(ragService.listSegments(id, page, size, keyword));
     }
 
     /**

@@ -207,6 +207,21 @@ lion:
     #         否则每次启动都会把同样的片段再追加一遍, 向量库里越积越多。
     ingest-on-startup: false
 
+    # ---- 问答链路: 混合检索(向量 + BM25) → RRF 融合 → 精排(rerank) ----
+    # 召回参数(向量 Top20/0.6 起、BM25 Top10、融合后送精排 10 条)为 HybridRetriever 内常量;
+    # 下列为精排(rerank)配置: DashScope gte-rerank 交叉编码器对"问题+片段"逐对打分, 常开,
+    # 失败/超时自动降级为融合排序, 不影响问答可用性
+    rerank:
+      model: ${RAG_RERANK_MODEL:gte-rerank-v2}
+      # 与问答/向量化同一把 DashScope 密钥
+      api-key: ${QWEN_API_KEY:}
+      base-url: ${RAG_RERANK_BASE_URL:https://dashscope.aliyuncs.com}
+      # 精排后保留条数(最终拼入提示词的片段数)
+      top-n: ${RAG_RERANK_TOP_N:5}
+      # 相关性低于该值剔除(0~1)
+      min-score: ${RAG_RERANK_MIN_SCORE:0.3}
+      timeout-ms: ${RAG_RERANK_TIMEOUT_MS:3000}
+
   # ---- MinIO 对象存储(storage-type=minio 时使用, 凭据走 .env, 严禁写死) ----
   minio:
     endpoint: ${MINIO_ENDPOINT:}

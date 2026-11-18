@@ -5,6 +5,7 @@ import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
 import com.lion.agent.ai.rag.pojo.vo.RagParseProgressVO;
+import com.lion.agent.ai.rag.pojo.vo.RagSegmentPageVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
 
 import java.util.List;
@@ -56,9 +57,21 @@ public interface RagService {
     List<RagSplitterVO> listSplitters();
 
     /**
-     * 文档列表(按上传时间倒序, 供前端文件列表展示)
+     * 文档列表(按编号倒序, 供前端文件列表展示)
      */
     List<RagDocumentVO> listDocuments();
+
+    /**
+     * 文档片段明细(片段抽屉): 从 rag_segment 表按 seq 升序物理分页,
+     * 支持按片段原文关键字模糊过滤(检查切分质量用)
+     *
+     * @param docId  文档 id(rag_document 主键)
+     * @param page   页码(1 起)
+     * @param size   每页条数(1~100, 超界自动修正)
+     * @param keyword 片段内容关键字(可空 = 不过滤)
+     * @return 分页片段明细
+     */
+    RagSegmentPageVO listSegments(Long docId, long page, long size, String keyword);
 
     /**
      * 删除单个文档: 先删其全部向量(按 docId 元数据过滤), 再删元数据记录

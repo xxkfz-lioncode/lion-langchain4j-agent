@@ -256,6 +256,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   CircleCheckFilled, CircleCloseFilled, Coin, Document, InfoFilled,
   Link, MoreFilled, RefreshRight, WarningFilled
@@ -288,7 +289,9 @@ const items = ref([])
 const total = ref(0)
 const page = ref(1)
 const limit = ref(20)
-const fileName = ref('')
+// 支持外部联动带入: 知识库管理页片段抽屉"向量库"按钮跳转时带 ?fileName=xxx
+const route = useRoute()
+const fileName = ref(route.query.fileName ? String(route.query.fileName) : '')
 const withVector = ref(false)
 const loading = ref(false)
 const files = ref([])          // 来源文件下拉(项目默认连接的已上传文档)

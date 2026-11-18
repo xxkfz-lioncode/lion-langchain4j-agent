@@ -58,7 +58,11 @@
                       <span class="source-idx">{{ si + 1 }}</span>
                       <span class="source-name" :title="s.fileName">{{ s.fileName || '未知文档' }}</span>
                       <span v-if="s.page != null" class="source-page">第 {{ s.page }} 页</span>
-                      <span v-if="s.score != null" class="source-score">{{ s.score }}%</span>
+                      <span
+                        v-if="s.score != null"
+                        class="source-score"
+                        :title="s.vectorScore != null ? '精排相关性 ' + s.score + '% · 向量召回 ' + s.vectorScore + '%' : '向量相似度'"
+                      >{{ s.score }}%</span>
                     </div>
                     <div class="source-snippet">{{ s.snippet }}</div>
                   </div>

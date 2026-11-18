@@ -120,6 +120,22 @@ CREATE TABLE IF NOT EXISTS `rag_document` (
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='RAG 知识库文档表';
 
+-- 知识库片段表(混合检索的 BM25 关键词路数据源 + 后续分段预览打底):
+-- 解析成功后与 Milvus 向量同步落库(同一批片段, 以最后成功解析的一次为准),
+-- BM25 打分在应用内存完成(学习项目规模足够; 生产规模化换 ES/Milvus sparse, 表结构可复用)
+DROP TABLE IF EXISTS `rag_segment`;
+CREATE TABLE IF NOT EXISTS `rag_segment` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `doc_id`      BIGINT       NOT NULL COMMENT '所属文档 id(rag_document.id)',
+    `seq`         INT          NOT NULL COMMENT '片段序号(文档内从 0 递增)',
+    `page`        INT          NULL COMMENT 'PDF 页码(1 起; txt/md 等文本类为空)',
+    `content`     MEDIUMTEXT   NOT NULL COMMENT '片段原文',
+    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_doc_seq` (`doc_id`, `seq`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='RAG 知识库片段表';
+
 -- =====================================================================================
 -- 智能问数(Text-to-SQL)相关表
 -- =====================================================================================

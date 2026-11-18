@@ -1,8 +1,11 @@
 package com.lion.agent.ai.rag.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.lion.agent.ai.rag.mapper.RagDocumentMapper;
+import com.lion.agent.ai.rag.mapper.RagSegmentMapper;
 import com.lion.agent.ai.rag.pojo.entity.RagDocumentEntity;
+import com.lion.agent.ai.rag.pojo.entity.RagSegmentEntity;
 import com.lion.agent.ai.rag.service.impl.RagServiceImpl;
 import com.lion.agent.ai.rag.splitter.DocumentSplitterFactory;
 import com.lion.agent.ai.rag.splitter.ResolvedSplitter;
@@ -51,6 +54,8 @@ public class RagParseWorker {
     private static final int SPLIT_PROGRESS = 10;
 
     private final RagDocumentMapper ragDocumentMapper;
+    /** 片段表 Mapper: 解析成功后同步落库(混合检索 BM25 关键词路数据源) */
+    private final RagSegmentMapper ragSegmentMapper;
     private final EmbeddingModel embeddingModel;
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final DocumentSplitterFactory splitterFactory;
@@ -62,12 +67,14 @@ public class RagParseWorker {
                           EmbeddingStore<TextSegment> embeddingStore,
                           DocumentSplitterFactory splitterFactory,
                           RagDocumentMapper ragDocumentMapper,
+                          RagSegmentMapper ragSegmentMapper,
                           List<FileStorage> storageImpls,
                           @Value("${lion.rag.storage-type:local}") String activeStorageType) {
         this.embeddingModel = embeddingModel;
         this.embeddingStore = embeddingStore;
         this.splitterFactory = splitterFactory;
         this.ragDocumentMapper = ragDocumentMapper;
+        this.ragSegmentMapper = ragSegmentMapper;
         this.storages = storageImpls.stream()
                 .collect(Collectors.toMap(FileStorage::type, Function.identity()));
         FileStorage active = storages.get(activeStorageType);
@@ -129,7 +136,8 @@ public class RagParseWorker {
                 log.info("文档[{}]向量化入库中: {}/{} 片段", entity.getFileName(), done, total);
             }
 
-            // 4. 成功收尾: 状态/进度/片段数/完成时间
+            // 4. 成功收尾: 片段同步落 rag_segment(BM25 关键词路数据源) + 状态/进度/片段数/完成时间
+            saveSegments(entity, segments);
             ragDocumentMapper.update(null, new LambdaUpdateWrapper<RagDocumentEntity>()
                     .eq(RagDocumentEntity::getId, docId)
                     .set(RagDocumentEntity::getStatus, 1)
@@ -162,6 +170,27 @@ public class RagParseWorker {
         ragDocumentMapper.update(null, new LambdaUpdateWrapper<RagDocumentEntity>()
                 .eq(RagDocumentEntity::getId, docId)
                 .set(RagDocumentEntity::getProgress, progress));
+    }
+
+    /**
+     * 片段同步落 rag_segment(混合检索 BM25 关键词路数据源):
+     * 重新解析时先删旧再插新(与向量"以最后成功一次为准"的语义一致);
+     * 仅在向量化全部成功后调用, 失败路径不会污染片段表
+     */
+    private void saveSegments(RagDocumentEntity entity, List<TextSegment> segments) {
+        ragSegmentMapper.delete(new LambdaQueryWrapper<RagSegmentEntity>()
+                .eq(RagSegmentEntity::getDocId, entity.getId()));
+        int seq = 0;
+        for (TextSegment segment : segments) {
+            RagSegmentEntity row = new RagSegmentEntity();
+            row.setDocId(entity.getId());
+            row.setSeq(seq++);
+            String page = segment.metadata().getString(RagServiceImpl.META_PAGE);
+            row.setPage(page == null || page.isBlank() ? null : Integer.valueOf(page));
+            row.setContent(segment.text());
+            ragSegmentMapper.insert(row);
+        }
+        log.info("文档[{}]片段表落库完成: {} 条", entity.getFileName(), seq);
     }
 
     /**

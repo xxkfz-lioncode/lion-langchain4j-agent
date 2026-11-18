@@ -17,8 +17,11 @@ public class RagSourceVO {
     /** PDF 页码(1 起, 引用定位"第 N 页"用; txt/md 等文本类无页码为 null) */
     private Integer page;
 
-    /** 匹配度(0-100, 相似度 score × 100 取整; 供内部调试排序参考) */
+    /** 相关性分数(0-100): rerank 开启时 = 精排相关性 × 100; 降级时 = 向量相似度 × 100 */
     private Integer score;
+
+    /** 向量召回相似度(0-100, 仅 BM25-only 命中或降级对比时参考; 可为 null) */
+    private Integer vectorScore;
 
     /** 片段摘要(截断展示, 引用条列表用) */
     private String snippet;

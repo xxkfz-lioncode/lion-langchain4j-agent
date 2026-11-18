@@ -53,6 +53,12 @@
         @selection-change="onSelectionChange"
       >
         <el-table-column type="selection" width="46" />
+        <!-- 编号列: 生产管理页惯例放第一列(rag_document 主键, 引用溯源/向量片段/日志排错都以它为键) -->
+        <el-table-column label="编号" width="80" align="center" prop="id" sortable>
+          <template #default="{ row }">
+            <span class="doc-id" :title="'文档编号(rag_document 主键 docId, 引用溯源/日志排错用)'">{{ row.id }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="文档" min-width="280">
           <template #default="{ row }">
             <div class="doc-cell">
@@ -60,7 +66,7 @@
                 <Document />
               </el-icon>
               <div class="doc-text">
-                <div class="doc-name" :title="`${row.fileName} (${row.id})`">{{ row.fileName }}</div>
+                <div class="doc-name">{{ row.fileName }}</div>
                 <div v-if="row.splitterPattern" class="doc-sub">正则 {{ row.splitterPattern }}</div>
               </div>
             </div>
@@ -78,12 +84,19 @@
             <el-tag v-else type="success" effect="light" round>已解析</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="片段数" width="90" align="center">
+        <el-table-column label="片段数" width="90" align="center" prop="segmentCount" sortable>
           <template #default="{ row }">
-            {{ row.status === 1 ? row.segmentCount : '-' }}
+            <!-- 已解析: 片段数可点击打开片段抽屉; 其余显示 '-' -->
+            <span
+              v-if="row.status === 1"
+              class="seg-link"
+              title="点击查看片段明细(切分结果)"
+              @click="openSegments(row)"
+            >{{ row.segmentCount }}</span>
+            <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="大小" width="100" align="center">
+        <el-table-column label="大小" width="100" align="center" prop="fileSize" sortable>
           <template #default="{ row }">{{ row.sizeText }}</template>
         </el-table-column>
         <el-table-column label="切分方式" width="150" align="center">
@@ -94,7 +107,8 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="上传时间" width="160" align="center">
+        <!-- prop 用原始 createTime(字典序即时间序); 展示走格式化的 timeText -->
+        <el-table-column label="上传时间" width="160" align="center" prop="createTime" sortable>
           <template #default="{ row }">{{ row.timeText }}</template>
         </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
@@ -194,6 +208,9 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 片段明细抽屉: 查看切分结果(rag_segment), 支持搜索/复制/跳转向量库 -->
+    <RagSegmentDrawer v-model="segDrawer.visible" :document="segDrawer.doc" />
   </div>
 </template>
 
@@ -209,6 +226,7 @@ import {
   downloadRagDocument,
   getRagSplitters
 } from '@/api/rag'
+import RagSegmentDrawer from '@/components/RagSegmentDrawer.vue'
 
 // ---------------- 数据 ----------------
 
@@ -217,6 +235,15 @@ const segments = ref(0)
 const keyword = ref('')
 const loadingDocs = ref(false)
 const uploading = ref(false)
+
+/** 片段明细抽屉: v-model 开关 + 目标文档 */
+const segDrawer = ref({ visible: false, doc: null })
+
+/** 打开片段抽屉(仅已解析文档; 片段数列点击入口) */
+function openSegments(row) {
+  if (row.status !== 1) return
+  segDrawer.value = { visible: true, doc: row }
+}
 
 /** 按文件名过滤(生产管理页标配) */
 const filteredFiles = computed(() => {
@@ -681,6 +708,25 @@ onMounted(async () => {
 .doc-icon {
   font-size: 18px;
   flex-shrink: 0;
+}
+
+/* 编号列: 纯数字 + 等宽字体, 弱化颜色不与文件名抢视觉 */
+.doc-id {
+  font-size: 13px;
+  color: #909399;
+  font-family: monospace;
+  white-space: nowrap;
+}
+
+/* 片段数链接(已解析文档可点击打开片段抽屉) */
+.seg-link {
+  color: #2d6cdf;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.seg-link:hover {
+  color: #1d4fb8;
 }
 
 .doc-text {

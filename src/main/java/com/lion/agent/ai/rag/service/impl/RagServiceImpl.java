@@ -1,11 +1,18 @@
 package com.lion.agent.ai.rag.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.lion.agent.ai.rag.pojo.vo.*;
 import com.lion.agent.common.exception.BusinessException;
 
 import com.lion.agent.ai.rag.pojo.entity.RagDocumentEntity;
+import com.lion.agent.ai.rag.pojo.entity.RagSegmentEntity;
 import com.lion.agent.ai.rag.mapper.RagDocumentMapper;
+import com.lion.agent.ai.rag.mapper.RagSegmentMapper;
+import com.lion.agent.ai.rag.rerank.RagRerankProperties;
+import com.lion.agent.ai.rag.rerank.RagReranker;
+import com.lion.agent.ai.rag.search.HybridRetriever;
+import com.lion.agent.ai.rag.search.RetrievedSegment;
 import com.lion.agent.ai.rag.service.RagParseWorker;
 import com.lion.agent.ai.rag.service.RagService;
 import com.lion.agent.ai.rag.splitter.DocumentSplitterFactory;
@@ -65,10 +72,6 @@ import java.util.stream.Collectors;
 @Service
 public class RagServiceImpl implements RagService {
 
-    /** 检索最多返回的相似片段数 */
-    private static final int MAX_RESULTS = 2;
-    /** 相似度低于该值的片段将被过滤 */
-    private static final double MIN_SCORE = 0.75;
     /** 引用来源摘要截断长度(超出部分以 … 结尾, 全文走 text 字段) */
     private static final int SNIPPET_MAX = 120;
 
@@ -82,7 +85,7 @@ public class RagServiceImpl implements RagService {
     private final ChatModel chatModel;
     /** 切分器工厂: 按请求参数(方式/块大小/重叠/正则)构建切分器, 支持前端自定义切分 */
     private final DocumentSplitterFactory splitterFactory;
-    private final EmbeddingModel embeddingModel;
+    /** 向量库(重新解析清旧向量/删除文档清向量时直接操作; 问答检索走 HybridRetriever) */
     private final EmbeddingStore<TextSegment> embeddingStore;
     private final RagDocumentMapper ragDocumentMapper;
     /** 全部存储实现(local + minio), 按各自 type() 索引; 存量文件按 rag_document.storage_type 路由 */
@@ -91,22 +94,35 @@ public class RagServiceImpl implements RagService {
     private final FileStorage activeStorage;
     /** 异步解析执行器: 校验/置状态后把耗时任务交给它(独立线程池, 不占 HTTP 线程) */
     private final RagParseWorker parseWorker;
+    /** 混合检索器: 向量 + BM25 双路召回 → RRF 融合(问答链路第一步) */
+    private final HybridRetriever hybridRetriever;
+    /** 精排器: DashScope gte-rerank 交叉编码器(问答链路第二步, 可降级) */
+    private final RagReranker reranker;
+    /** 精排配置(topN/minScore/enabled) */
+    private final RagRerankProperties rerankProperties;
+    /** 片段表 Mapper: 删除文档时同步清理(BM25 关键词路数据源) */
+    private final RagSegmentMapper ragSegmentMapper;
 
-    public RagServiceImpl(ChatModel chatModel, EmbeddingModel embeddingModel,
+    public RagServiceImpl(ChatModel chatModel,
                           EmbeddingStore<TextSegment> embeddingStore,
                           DocumentSplitterFactory splitterFactory,
                           RagDocumentMapper ragDocumentMapper,
                           List<FileStorage> storageImpls,
                           RagParseWorker parseWorker,
+                          HybridRetriever hybridRetriever,
+                          RagReranker reranker,
+                          RagRerankProperties rerankProperties,
+                          RagSegmentMapper ragSegmentMapper,
                           @Value("${lion.rag.storage-type:local}") String activeStorageType) {
         this.chatModel = chatModel;
-        this.embeddingModel = embeddingModel;
-        // 向量库由 milvus starter 自动装配(MilvusEmbeddingStore), 经 rag/config/RagVectorStoreConfig
-        // 的 @Primary Bean 锁定, 不要在此处手工 new, 否则与注入/检索用的 store 不一致
         this.embeddingStore = embeddingStore;
         this.splitterFactory = splitterFactory;
         this.ragDocumentMapper = ragDocumentMapper;
         this.parseWorker = parseWorker;
+        this.hybridRetriever = hybridRetriever;
+        this.reranker = reranker;
+        this.rerankProperties = rerankProperties;
+        this.ragSegmentMapper = ragSegmentMapper;
         this.storages = storageImpls.stream()
                 .collect(Collectors.toMap(FileStorage::type, Function.identity()));
         FileStorage active = storages.get(activeStorageType);
@@ -240,14 +256,54 @@ public class RagServiceImpl implements RagService {
     @Override
     public List<RagDocumentVO> listDocuments() {
         List<RagDocumentEntity> entities = ragDocumentMapper.selectList(
-                new LambdaQueryWrapper<RagDocumentEntity>()
-                        .orderByDesc(RagDocumentEntity::getCreateTime)
-                        .orderByDesc(RagDocumentEntity::getId));
+                new LambdaQueryWrapper<RagDocumentEntity>().orderByAsc(RagDocumentEntity::getId));
         List<RagDocumentVO> result = new ArrayList<>(entities.size());
         for (RagDocumentEntity e : entities) {
             result.add(toVO(e));
         }
         return result;
+    }
+
+    @Override
+    public RagSegmentPageVO listSegments(Long docId, long page, long size, String keyword) {
+        if (docId == null) {
+            throw new BusinessException("文档 id 不能为空");
+        }
+        RagDocumentEntity doc = ragDocumentMapper.selectById(docId);
+        if (doc == null) {
+            throw new BusinessException("文档不存在: " + docId);
+        }
+        // 参数修正: 页码至少 1, 每页条数限制在 1~100(防一把捞全量)
+        long safePage = Math.max(page, 1);
+        long safeSize = Math.min(Math.max(size, 1), 100);
+
+        LambdaQueryWrapper<RagSegmentEntity> wrapper = new LambdaQueryWrapper<RagSegmentEntity>()
+                .eq(RagSegmentEntity::getDocId, docId)
+                .orderByAsc(RagSegmentEntity::getSeq);
+        if (keyword != null && !keyword.isBlank()) {
+            wrapper.like(RagSegmentEntity::getContent, keyword.trim());
+        }
+
+        // 物理分页(分页插件), content 全量返回, 截断展示由前端 CSS 完成
+        Page<RagSegmentEntity> result = ragSegmentMapper.selectPage(Page.of(safePage, safeSize), wrapper);
+        List<RagDocSegmentVO> records = new ArrayList<>(result.getRecords().size());
+        for (RagSegmentEntity s : result.getRecords()) {
+            RagDocSegmentVO vo = new RagDocSegmentVO();
+            vo.setId(s.getId());
+            vo.setSeq(s.getSeq());
+            vo.setPage(s.getPage());
+            vo.setCharCount(s.getContent() == null ? 0 : s.getContent().length());
+            vo.setContent(s.getContent());
+            records.add(vo);
+        }
+
+        RagSegmentPageVO vo = new RagSegmentPageVO();
+        vo.setTotal(result.getTotal());
+        vo.setPages(result.getPages());
+        vo.setPage(result.getCurrent());
+        vo.setSize(result.getSize());
+        vo.setRecords(records);
+        return vo;
     }
 
     @Override
@@ -289,9 +345,13 @@ public class RagServiceImpl implements RagService {
         embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID)
                 .isEqualTo(String.valueOf(id)));
 
-        // 2. 再删元数据记录
+        // 2. 同步删除片段表记录(BM25 关键词路数据源, 与向量保持一致)
+        ragSegmentMapper.delete(new LambdaQueryWrapper<RagSegmentEntity>()
+                .eq(RagSegmentEntity::getDocId, id));
+
+        // 3. 再删元数据记录
         ragDocumentMapper.deleteById(id);
-        // 3. 最后删原始文件(按记录的 storage_type 路由; 失败仅告警, 不阻断主流程)
+        // 4. 最后删原始文件(按记录的 storage_type 路由; 失败仅告警, 不阻断主流程)
         storageOf(entity).delete(entity.getFilePath());
         log.info("文档[{}]已删除(含 {} 个向量片段, 存储={}, 对象={})",
                 entity.getFileName(), entity.getSegmentCount(), entity.getStorageType(), entity.getFilePath());
@@ -320,18 +380,32 @@ public class RagServiceImpl implements RagService {
         if (question == null || question.isBlank()) {
             throw new BusinessException("问题内容不能为空");
         }
-        // 直接检索向量库(不用 ContentRetriever, 因为需要每个片段的相似度分数作引用匹配度):
-        // 问题向量化 → 相似度检索 Top-N(minScore 已过滤低分), 结果按分数倒序
-        Embedding queryEmbedding = embeddingModel.embed(question).content();
-        List<EmbeddingMatch<TextSegment>> matches = embeddingStore.search(EmbeddingSearchRequest.builder()
-                .queryEmbedding(queryEmbedding)
-                .maxResults(MAX_RESULTS)
-                .minScore(MIN_SCORE)
-                .build()).matches();
 
-        // 引用来源由检索层注入(与拼进提示词的片段一一对应), 不依赖 LLM 自述出处, 保证真实可查
-        List<RagSourceVO> sources = matches.stream().map(this::toSource).toList();
-        if (matches.isEmpty()) {
+        // 1. 混合检索: 向量路(语义) + BM25 路(字面) 双路召回 → RRF 融合(见 HybridRetriever)
+        List<RetrievedSegment> fused = hybridRetriever.retrieve(question);
+        if (fused.isEmpty()) {
+            RagAnswerVO empty = new RagAnswerVO();
+            empty.setAnswer("知识库中暂时没有与您的问题相关的资料, 请先导入知识文档, 或换个问法试试。");
+            empty.setSources(List.of());
+            return empty;
+        }
+
+        // 2. 精排: gte-rerank 交叉编码器对"问题+片段"逐对打分(生产 RAG 效果提升最大单点), 常开;
+        //    失败/超时自动降级为融合排序(rerank 是增强项, 绝不做单点故障)
+        List<RagReranker.RerankResult> ranked;
+        try {
+            ranked = reranker.rerank(question, fused);
+        } catch (Exception e) {
+            log.warn("Rerank 精排失败, 降级为融合排序: {}", RagUtils.rootMessage(e));
+            ranked = fallbackRanked(fused);
+        }
+
+        // 3. 低相关剔除 + 取 Top-N(与拼进提示词的片段一一对应, 引用永远真实可查)
+        List<RagReranker.RerankResult> top = ranked.stream()
+                .filter(r -> r.relevance() >= rerankProperties.getMinScore())
+                .limit(rerankProperties.getTopN())
+                .toList();
+        if (top.isEmpty()) {
             RagAnswerVO empty = new RagAnswerVO();
             empty.setAnswer("知识库中暂时没有与您的问题相关的资料, 请先导入知识文档, 或换个问法试试。");
             empty.setSources(List.of());
@@ -339,8 +413,8 @@ public class RagServiceImpl implements RagService {
         }
 
         StringBuilder context = new StringBuilder();
-        for (int i = 0; i < matches.size(); i++) {
-            context.append(i + 1).append(". ").append(matches.get(i).embedded().text()).append('\n');
+        for (int i = 0; i < top.size(); i++) {
+            context.append(i + 1).append(". ").append(top.get(i).segment().segment().text()).append('\n');
         }
 
         String systemText = "你是知识库问答助手。请仅依据下面提供的参考资料回答用户的问题; "
@@ -351,16 +425,24 @@ public class RagServiceImpl implements RagService {
 
         RagAnswerVO vo = new RagAnswerVO();
         vo.setAnswer(response.aiMessage().text());
-        vo.setSources(sources);
+        vo.setSources(top.stream().map(this::toSource).toList());
         return vo;
     }
 
+    /** 降级排序: 保持融合顺序, 用向量相似度当作展示分数(BM25-only 命中的片段无向量分为 null) */
+    private List<RagReranker.RerankResult> fallbackRanked(List<RetrievedSegment> fused) {
+        return fused.stream()
+                .map(r -> new RagReranker.RerankResult(r, r.vectorScore() == null ? 0 : r.vectorScore()))
+                .toList();
+    }
+
     /**
-     * 检索片段 → 引用来源 VO: 文档名/docId 来自片段元数据, 匹配度 = 相似度分数 × 100,
-     * 全文供详情展示, 摘要截断供列表展示
+     * 精排结果 → 引用来源 VO:
+     * score = 精排相关性 × 100(降级时为向量相似度); vectorScore 保留向量召回分供对比;
+     * 文档名/docId/页码来自片段元数据, 全文供详情展示, 摘要截断供列表展示
      */
-    private RagSourceVO toSource(EmbeddingMatch<TextSegment> match) {
-        TextSegment segment = match.embedded();
+    private RagSourceVO toSource(RagReranker.RerankResult result) {
+        TextSegment segment = result.segment().segment();
         Metadata meta = segment.metadata();
         RagSourceVO vo = new RagSourceVO();
         String docId = meta.getString(META_DOC_ID);
@@ -368,7 +450,9 @@ public class RagServiceImpl implements RagService {
         vo.setFileName(meta.getString(META_FILE_NAME));
         String page = meta.getString(META_PAGE);
         vo.setPage(page == null || page.isBlank() ? null : Integer.valueOf(page));
-        vo.setScore((int) Math.round(match.score() * 100));
+        vo.setScore((int) Math.round(result.relevance() * 100));
+        Double vectorScore = result.segment().vectorScore();
+        vo.setVectorScore(vectorScore == null ? null : (int) Math.round(vectorScore * 100));
         String text = segment.text();
         vo.setText(text);
         vo.setSnippet(RagUtils.snippet(text, SNIPPET_MAX));

@@ -40,6 +40,14 @@ export const getRagDocuments = () => request.get('/api/rag/documents')
 export const deleteRagDocument = (id) => request.delete(`/api/rag/documents/${id}`)
 
 /**
+ * 文档片段明细(片段抽屉): rag_segment 表数据(切分原文视角), 按片段序号升序物理分页
+ * params = { page(1起), size(默认20), keyword(片段内容关键字, 可空) }
+ * 返回 { total, pages, page, size, records: [{ id, seq, page, charCount, content }] }
+ */
+export const getRagSegments = (id, params = {}) =>
+  request.get(`/api/rag/documents/${id}/segments`, { params })
+
+/**
  * 下载文档原文: blob 响应(拦截器返回完整 response, 调用方用 data + 保存文件名)
  * 用法: const res = await downloadRagDocument(id); URL.createObjectURL(res.data) 触发浏览器保存
  */
@@ -48,7 +56,9 @@ export const downloadRagDocument = (id) =>
 
 /**
  * 知识库问答(阻塞式整段返回), 返回 { answer, sources }
- * sources: 引用来源 [{ docId, fileName, page(PDF 页码, 文本类为 null), score(0-100), snippet(摘要), text(片段全文) }]
+ * sources: 引用来源 [{ docId, fileName, page(PDF 页码, 文本类为 null),
+ *           score(精排相关性 0-100, rerank 关闭/失败时为向量相似度), vectorScore(向量召回分, 可 null),
+ *           snippet(摘要), text(片段全文) }]
  */
 export const ragChat = (question) => request.post('/api/rag/chat', { question })
 
