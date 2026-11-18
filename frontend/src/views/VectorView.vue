@@ -96,13 +96,16 @@
             </div>
             <div
               v-for="c in collections"
-              :key="c"
+              :key="c.name"
               class="coll-item"
-              :class="{ active: c === activeCollection }"
-              @click="onCollectionSelect(c)"
+              :class="{ active: c.name === activeCollection }"
+              @click="onCollectionSelect(c.name)"
             >
               <el-icon class="coll-icon"><Coin /></el-icon>
-              <span class="coll-name" :title="c">{{ c }}</span>
+              <span class="coll-name" :title="c.name">{{ c.name }}</span>
+              <!-- 片段数徽章(Attu 同款); 统计失败显示 '-' -->
+              <span v-if="c.rowCount != null" class="coll-count">{{ c.rowCount }}</span>
+              <span v-else class="coll-count">-</span>
             </div>
           </el-scrollbar>
         </div>
@@ -374,7 +377,7 @@ function onUseDefaultChange(value) {
 async function reloadStructure() {
   loadingStruct.value = true
   try {
-    const dbs = await getVectorDatabases()
+    const dbs = await getVectorDatabases(currentConn())
     databases.value = dbs || []
     if (conn.database && !databases.value.includes(conn.database)) {
       databases.value.push(conn.database)
@@ -399,12 +402,13 @@ async function reloadStructure() {
 
 async function loadCollections(autoSelect = false) {
   try {
-    const list = await getVectorCollections()
+    const list = await getVectorCollections(currentConn())
     collections.value = list || []
-    if (collections.value.length) {
+    const names = collections.value.map((c) => c.name)
+    if (names.length) {
       // 原集合还在就保持, 否则选第一个
-      if (!activeCollection.value || !collections.value.includes(activeCollection.value)) {
-        activeCollection.value = collections.value[0]
+      if (!activeCollection.value || !names.includes(activeCollection.value)) {
+        activeCollection.value = names[0]
         if (autoSelect) fileName.value = ''
       }
     } else {
@@ -690,6 +694,23 @@ function formatVector(vector) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 片段数徽章(集合列表右侧, 弱化展示) */
+.coll-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #909399;
+  background: #f4f4f5;
+  border-radius: 8px;
+  padding: 0 7px;
+  line-height: 16px;
+  font-family: monospace;
+}
+.coll-item.active .coll-count {
+  color: #2d4a8f;
+  background: #e3ebfa;
 }
 
 /* ==================== 右侧内容 ==================== */

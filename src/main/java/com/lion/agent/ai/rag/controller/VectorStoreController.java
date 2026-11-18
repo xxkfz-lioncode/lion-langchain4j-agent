@@ -78,12 +78,13 @@ public class VectorStoreController {
     }
 
     /**
-     * 指定连接/数据库下的集合列表
+     * 指定连接/数据库下的集合列表(带片段数)
      */
-    @Operation(summary = "集合列表", description = "查询指定数据库下的所有集合(showCollections)")
+    @Operation(summary = "集合列表", description = "查询指定数据库下的所有集合(showCollections), "
+            + "并统计每个集合的片段数(rowCount, 单个集合统计失败为 null)")
     @GetMapping("/collections")
-    public R<List<String>> collections(@ModelAttribute MilvusConnectionDTO conn) {
-        return R.ok(milvusVectorInspector.listCollections(conn));
+    public R<List<Map<String, Object>>> collections(@ModelAttribute MilvusConnectionDTO conn) {
+        return R.ok(milvusVectorInspector.listCollectionsWithCount(conn));
     }
 
     /**

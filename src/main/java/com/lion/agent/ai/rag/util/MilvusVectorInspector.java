@@ -29,6 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
@@ -119,6 +120,39 @@ public class MilvusVectorInspector {
                         .withDatabaseName(resolveDatabase(conn))
                         .build()));
         return new ArrayList<>(data.getCollectionNamesList());
+    }
+
+    /**
+     * 集合列表(带片段数, Attu 同款展示): 每个集合并行 count(*)。
+     * 单个集合统计失败不影响整体(该集合 rowCount = null, 前端显示 '-');
+     * 集合结构有 schemaCache 缓存, 二次加载只剩 count 一次 RPC。
+     */
+    public List<Map<String, Object>> listCollectionsWithCount(MilvusConnectionDTO conn) {
+        List<String> names = listCollections(conn);
+        return names.parallelStream().map(name -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", name);
+            try {
+                MilvusConnectionDTO one = copyConn(conn);
+                one.setCollection(name);
+                item.put("rowCount", count(one, null));
+            } catch (Exception e) {
+                log.warn("集合[{}]片段数统计失败: {}", name, e.getMessage());
+                item.put("rowCount", null);
+            }
+            return item;
+        }).toList();
+    }
+
+    /** 复制一份连接参数(集合字段独立设置, 不污染原请求上下文) */
+    private MilvusConnectionDTO copyConn(MilvusConnectionDTO conn) {
+        MilvusConnectionDTO one = new MilvusConnectionDTO();
+        if (conn != null) {
+            one.setHost(conn.getHost());
+            one.setPort(conn.getPort());
+            one.setDatabase(conn.getDatabase());
+        }
+        return one;
     }
 
     /**
@@ -380,8 +414,23 @@ public class MilvusVectorInspector {
         return value != null && !value.isBlank();
     }
 
+    /** 连接失败/查询异常后清掉该连接的缓存客户端, 下次调用重新建连(避免缓存半死连接反复失败) */
+    private void evictClient(MilvusConnectionDTO conn) {
+        String key = endpoint(conn) + "/" + resolveDatabase(conn);
+        MilvusServiceClient removed = clientCache.remove(key);
+        if (removed != null) {
+            try {
+                removed.close();
+            } catch (Exception ignore) {
+                // 关闭失败不影响主流程
+            }
+        }
+    }
+
     /**
-     * 取(或懒创建)指定连接的客户端: 按 host:port/database 缓存, 多连接切换不会反复建 gRPC 连接
+     * 取(或懒创建)指定连接的客户端: 按 host:port/database 缓存, 多连接切换不会反复建 gRPC 连接。
+     * 建连超时 3s: 远端握手卡住时快速失败(默认 10s + SDK 内部重试会把 HTTP 请求挂到
+     * 前端先断开, 表现为 Network Error 而不是真实错误信息), 由 call() 包装成人话报错。
      */
     private MilvusServiceClient client(MilvusConnectionDTO conn) {
         String database = resolveDatabase(conn);
@@ -391,18 +440,20 @@ public class MilvusVectorInspector {
                     .withHost(resolveHost(conn))
                     .withPort(resolvePort(conn))
                     .withDatabaseName(database)
+                    .withConnectTimeout(3, TimeUnit.SECONDS)
                     .build());
             log.info("Milvus 查看工具已连接 {} (database={})", key, database);
             return created;
         });
     }
 
-    /** 统一调用 + 异常包装: 连不通/查失败都给前端一句人话 */
+    /** 统一调用 + 异常包装: 连不通/查失败都给前端一句人话; 失败时清掉该连接的坏客户端缓存 */
     private <T> T call(MilvusConnectionDTO conn, String action, Supplier<R<T>> supplier) {
         R<T> resp;
         try {
             resp = supplier.get();
         } catch (Exception e) {
+            evictClient(conn);
             throw new BusinessException("连接 Milvus 失败(" + endpoint(conn) + "): " + e.getMessage()
                     + "; 请检查地址/端口/网络, 以及 Milvus 是否已启动");
         }
