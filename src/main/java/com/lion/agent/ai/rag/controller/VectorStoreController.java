@@ -57,7 +57,8 @@ public class VectorStoreController {
         data.put("defaultConnection", defaults);
         try {
             data.put("databases", milvusVectorInspector.listDatabases(defaults));
-            data.put("collections", milvusVectorInspector.listCollections(defaults));
+            // 与 /collections 端点同构([{name, rowCount}]), 前端按统一结构解析
+            data.put("collections", milvusVectorInspector.listCollectionsWithCount(defaults));
             data.put("connected", true);
         } catch (BusinessException e) {
             data.put("databases", List.of());

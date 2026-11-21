@@ -7,14 +7,7 @@
           <el-icon><Link /></el-icon>
           连接配置
         </div>
-        <el-switch
-          v-model="useDefault"
-          size="small"
-          active-text="使用项目默认连接"
-          inline-prompt
-          @change="onUseDefaultChange"
-        />
-        <el-tag v-if="useDefault" size="small" type="info" effect="plain" round>
+        <el-tag v-if="selectedConnKey === '__default__'" size="small" type="info" effect="plain" round>
           来自 application.yml (langchain4j.milvus.*)
         </el-tag>
 
@@ -32,22 +25,38 @@
 
       <div class="conn-form">
         <div class="conn-field">
+          <span class="conn-label">连接</span>
+          <!-- 连接选择器: 项目默认 / 历史连接(localStorage) / 新建; 选中即切换联动 -->
+          <el-select v-model="selectedConnKey" class="conn-select" placeholder="选择连接" @change="onSelectConn">
+            <el-option value="__default__" label="项目默认连接" />
+            <el-option v-for="c in savedConns" :key="c.key" :value="c.key" :label="c.label">
+              <div class="conn-opt">
+                <span class="conn-opt-label">{{ c.label }}</span>
+                <el-icon class="conn-opt-del" title="删除该历史连接" @click.stop="removeSavedConn(c)"><Delete /></el-icon>
+              </div>
+            </el-option>
+            <el-option value="__new__" label="新建连接..." />
+          </el-select>
+        </div>
+        <div class="conn-field">
           <span class="conn-label">地址</span>
-          <el-input v-model="conn.host" size="default" class="conn-input" :disabled="useDefault"
+          <el-input v-model="conn.host" size="default" class="conn-input" :disabled="locked"
                     placeholder="127.0.0.1" />
         </div>
         <div class="conn-field">
           <span class="conn-label">端口</span>
           <el-input-number v-model="conn.port" size="default" class="conn-port" :min="1" :max="65535"
-                           :controls="false" :disabled="useDefault" />
+                           :controls="false" :disabled="locked" />
         </div>
         <div class="conn-field">
           <span class="conn-label">数据库</span>
-          <el-input v-model="conn.database" size="default" class="conn-db" :disabled="useDefault"
+          <el-input v-model="conn.database" size="default" class="conn-db" :disabled="locked"
                     placeholder="default" />
         </div>
-        <el-button size="default" :icon="RefreshRight" :loading="loadingStruct" @click="reloadStructure">
-          重新加载
+        <!-- 锁定态: 只能显式「编辑」解锁; 编辑态: 点「连接」验证并应用(成功自动存历史) -->
+        <el-button v-if="locked" size="default" :icon="Lock" @click="startEdit">编辑</el-button>
+        <el-button v-else size="default" type="primary" :loading="loadingStruct" @click="applyConn()">
+          连接
         </el-button>
       </div>
 
@@ -55,9 +64,9 @@
         <el-icon><WarningFilled /></el-icon>
         <span>{{ connError }}</span>
       </div>
-      <div v-else-if="!useDefault" class="conn-hint">
+      <div v-else-if="selectedConnKey === '__new__'" class="conn-hint">
         <el-icon><InfoFilled /></el-icon>
-        <span>已切换到自定义连接: 改完地址/端口后点「重新加载」生效</span>
+        <span>填写地址/端口后点「连接」, 成功后自动保存到历史连接</span>
       </div>
     </div>
 
@@ -261,9 +270,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  CircleCheckFilled, CircleCloseFilled, Coin, Document, InfoFilled,
-  Link, MoreFilled, RefreshRight, WarningFilled
+  CircleCheckFilled, CircleCloseFilled, Coin, Delete, Document, InfoFilled,
+  Link, Lock, MoreFilled, RefreshRight, WarningFilled
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { getRagDocuments } from '@/api/rag'
 import {
   getVectorCollectionInfo, getVectorCollections, getVectorConnection,
@@ -273,12 +283,110 @@ import {
 // ====================== 连接状态 ======================
 // 从 application.yml 读到的项目默认连接(用于"使用默认"时的展示与回填)
 const projectDefault = ref({})
-// 页面上实际生效的连接(使用默认时 = 项目默认值且输入框禁用)
+// 页面上实际生效的连接(输入框始终展示当前连接参数, 可编辑后点「连接」应用)
 const conn = reactive({ host: '', port: null, database: '' })
-const useDefault = ref(true)
 // 'ok' 已连接 / 'fail' 连接失败 / 'unknown' 未探测
 const connState = ref('unknown')
 const connError = ref('')
+
+// ---- 连接管理: 历史自定义连接(localStorage 持久化, 最多 5 个) + 选中即联动 ----
+const CONN_STORAGE_KEY = 'vector-milvus-conns'
+const savedConns = ref(loadSavedConns())
+// 当前选中的连接 key: '__default__' | '__new__' | 历史连接 key
+const selectedConnKey = ref('__default__')
+// 编辑态: 连接成功后参数锁定, 点「编辑」才能改(防误改导致下方数据与连接不一致)
+const editing = ref(false)
+/** 锁定条件: 已成功连接 + 非"新建连接"编辑中 */
+const locked = computed(() => selectedConnKey.value !== '__new__' && connState.value === 'ok' && !editing.value)
+
+/** 进入编辑态(解锁输入框, 按钮切为「连接」) */
+function startEdit() {
+  editing.value = true
+}
+
+function loadSavedConns() {
+  try {
+    // 过滤历史脏数据(host 为空的旧记录)
+    return JSON.parse(localStorage.getItem(CONN_STORAGE_KEY) || '[]')
+      .filter((c) => c && c.host && String(c.host).trim())
+  } catch {
+    return []
+  }
+}
+
+/** 连接唯一标识: host:port/database(相同标识视为同一连接, 去重) */
+function connKeyOf(c) {
+  return `${c.host}:${c.port}/${c.database || 'default'}`
+}
+
+function persistSavedConns() {
+  localStorage.setItem(CONN_STORAGE_KEY, JSON.stringify(savedConns.value.slice(0, 5)))
+}
+
+/** 下拉切换: 回填参数并自动重载(库/集合/片段全联动); 新建项清空输入框并进入编辑态 */
+async function onSelectConn(key) {
+  if (key === '__new__') {
+    conn.host = ''
+    conn.port = 19530
+    conn.database = 'default'
+    connState.value = 'unknown'
+    connError.value = ''
+    editing.value = true
+    return
+  }
+  const c = key === '__default__'
+    ? {
+        host: projectDefault.value.host,
+        port: projectDefault.value.port,
+        database: projectDefault.value.database
+      }
+    : savedConns.value.find((x) => x.key === key)
+  if (!c) return
+  conn.host = c.host
+  conn.port = c.port
+  conn.database = c.database
+  editing.value = false
+  await applyConn(key)
+}
+
+/** 应用当前输入的连接: 重载结构(顺带连通性验证); 成功且非默认连接则存入历史并选中; 成功后重新锁定 */
+async function applyConn(forcedKey) {
+  // 前端必填校验: 地址为空不让发请求(否则后端回退默认主机, 造成"空地址连成功"的语义错乱)
+  if (!conn.host || !String(conn.host).trim()) {
+    connState.value = 'fail'
+    connError.value = '请先填写 Milvus 地址'
+    return
+  }
+  await reloadStructure()
+  // 连接结果反馈: 成功/失败都给一条轻提示(失败详情在输入框下方的错误条里)
+  if (connState.value !== 'ok') {
+    ElMessage.error(connError.value || '连接失败')
+    return // 连不上不入历史(保持解锁可重试)
+  }
+  ElMessage.success(`已连接 ${conn.host}:${conn.port}/${conn.database || 'default'}`)
+  editing.value = false
+  const key = forcedKey || connKeyOf(conn)
+  if (key === '__default__') {
+    selectedConnKey.value = '__default__'
+    return
+  }
+  savedConns.value = [
+    { key, label: key, host: conn.host, port: conn.port, database: conn.database },
+    ...savedConns.value.filter((x) => x.key !== key)
+  ].slice(0, 5)
+  persistSavedConns()
+  selectedConnKey.value = key
+}
+
+/** 删除历史连接; 若删的是当前选中, 回落到项目默认并联动 */
+async function removeSavedConn(c) {
+  savedConns.value = savedConns.value.filter((x) => x.key !== c.key)
+  persistSavedConns()
+  if (selectedConnKey.value === c.key) {
+    selectedConnKey.value = '__default__'
+    await onSelectConn('__default__')
+  }
+}
 
 // ====================== 库 / 集合 ======================
 const databases = ref([])
@@ -337,11 +445,11 @@ onMounted(async () => {
     collections.value = data.collections || []
     connState.value = data.connected ? 'ok' : 'fail'
     connError.value = data.error || ''
-    // 默认选中项目配置里的集合
-    activeCollection.value =
-      collections.value.includes(projectDefault.value.collection)
-        ? projectDefault.value.collection
-        : collections.value[0] || ''
+    // 默认选中项目配置里的集合(collections 已带 rowCount, 按名字匹配)
+    const names = collections.value.map((c) => c.name)
+    activeCollection.value = names.includes(projectDefault.value.collection)
+      ? projectDefault.value.collection
+      : names[0] || ''
   } catch (e) {
     connState.value = 'fail'
     connError.value = e?.message || '读取项目默认连接失败'
@@ -363,15 +471,7 @@ async function loadFiles() {
 }
 
 // ====================== 连接交互 ======================
-// 切到"使用项目默认": 回填 yml 的值; 切到自定义: 保留当前值供编辑
-function onUseDefaultChange(value) {
-  if (value) {
-    conn.host = projectDefault.value.host
-    conn.port = projectDefault.value.port
-    conn.database = projectDefault.value.database
-  }
-  reloadStructure()
-}
+// 连接管理见上方「连接状态」区: 下拉选中即联动(onSelectConn), 新建/改参数点「连接」应用(applyConn)
 
 /** 重新加载结构: 库列表 + 集合列表(顺带完成一次"连接测试") */
 async function reloadStructure() {
@@ -398,6 +498,10 @@ async function reloadStructure() {
   }
   await loadCollections(true)
   loadingStruct.value = false
+  // 联动加载片段: 自动选中的集合直接带出数据(与切换数据库行为一致)
+  if (activeCollection.value) {
+    loadData()
+  }
 }
 
 async function loadCollections(autoSelect = false) {
@@ -569,6 +673,31 @@ function formatVector(vector) {
 
 .conn-input {
   width: 170px;
+}
+
+/* 连接选择器及下拉项(历史连接 hover 出删除) */
+.conn-select {
+  width: 190px;
+}
+.conn-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.conn-opt-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conn-opt-del {
+  color: #c0c4cc;
+  visibility: hidden;
+}
+.conn-opt-del:hover {
+  color: #f56c6c;
+}
+:deep(.el-select-dropdown__item):hover .conn-opt-del {
+  visibility: visible;
 }
 
 .conn-port {
