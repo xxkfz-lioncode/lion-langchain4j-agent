@@ -112,8 +112,8 @@
         </div>
       </header>
 
-      <!-- 标签页 Tabs -->
-      <div class="app-tabs">
+      <!-- 标签页 Tabs: 左键切换 / × 关闭 / 中键关闭 / 右键上下文菜单 -->
+      <div class="app-tabs" @contextmenu.prevent>
         <el-tag
           v-for="tab in tabs"
           :key="tab.path"
@@ -122,16 +122,45 @@
           :closable="tab.path !== HOME"
           @click="goTab(tab.path)"
           @close="closeTab(tab.path)"
+          @mousedown.middle.prevent="closeTab(tab.path)"
+          @contextmenu.prevent="openCtxMenu($event, tab)"
         >
           {{ tab.title }}
         </el-tag>
       </div>
 
-      <!-- 内容区 -->
+      <!-- 标签右键菜单(Teleport 到 body, 不受 .app-tabs overflow 裁剪) -->
+      <Teleport to="body">
+        <div
+          v-if="ctx.visible"
+          class="tab-ctx-menu"
+          :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }"
+          @click.stop
+        >
+          <div class="ctx-item" @click="onCtxCommand('refresh')">刷新</div>
+          <div class="ctx-item" :class="{ disabled: !canCloseCtx }" @click="onCtxCommand('close')">
+            关闭当前
+          </div>
+          <div class="ctx-divider" />
+          <div class="ctx-item" :class="{ disabled: !canCloseOthers }" @click="onCtxCommand('closeOthers')">
+            关闭其他
+          </div>
+          <div class="ctx-item" :class="{ disabled: !canCloseLeft }" @click="onCtxCommand('closeLeft')">
+            关闭左侧
+          </div>
+          <div class="ctx-item" :class="{ disabled: !canCloseRight }" @click="onCtxCommand('closeRight')">
+            关闭右侧
+          </div>
+          <div class="ctx-divider" />
+          <div class="ctx-item" @click="onCtxCommand('closeAll')">关闭全部</div>
+        </div>
+      </Teleport>
+
+      <!-- 内容区: key 带 reloadKey, 支持"刷新"只重渲染当前组件而非整页 reload -->
       <main class="app-content">
         <router-view v-slot="{ Component }">
           <transition name="fade-transform" mode="out-in">
-            <component :is="Component" :key="route.path" />
+            <component :is="Component" :key="route.path + '::' + reloadKey" />
           </transition>
         </router-view>
       </main>
@@ -140,7 +169,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   HomeFilled,
@@ -258,7 +287,44 @@ const crumbs = computed(() => {
 })
 
 // ---- 标签页 / Tab ----
-const tabs = ref([{ path: HOME, title: '首页' }])
+// 标签持久化: 刷新浏览器后保留已打开的标签(生产后台标配); 首页固定且始终在第一位
+const TABS_STORAGE_KEY = 'lion-layout-tabs'
+function loadTabs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TABS_STORAGE_KEY) || '[]')
+      .filter((t) => t && t.path && t.title && t.path !== HOME)
+    return [{ path: HOME, title: '首页' }, ...saved]
+  } catch {
+    return [{ path: HOME, title: '首页' }]
+  }
+}
+const tabs = ref(loadTabs())
+watch(tabs, (v) => localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(v)), { deep: true })
+
+// 组件级刷新: key 变化只重渲染当前路由组件, 不整页 reload(会重置当前页状态, 符合刷新语义)
+const reloadKey = ref(0)
+
+// 右键菜单状态(Teleport 到 body, 用 clientX/clientY 定位)
+const ctx = reactive({ visible: false, x: 0, y: 0, path: '' })
+const ctxIndex = computed(() => tabs.value.findIndex((t) => t.path === ctx.path))
+const canCloseCtx = computed(() => ctx.path !== HOME)
+const canCloseOthers = computed(() =>
+  tabs.value.some((t) => t.path !== HOME && t.path !== ctx.path))
+const canCloseLeft = computed(() =>
+  tabs.value.slice(0, Math.max(ctxIndex.value, 0)).some((t) => t.path !== HOME))
+const canCloseRight = computed(() =>
+  tabs.value.slice(ctxIndex.value + 1).some((t) => t.path !== HOME))
+
+function openCtxMenu(e, tab) {
+  ctx.path = tab.path
+  // 贴近视口边缘时向内收, 菜单不会被裁掉
+  ctx.x = Math.min(e.clientX, window.innerWidth - 160)
+  ctx.y = Math.min(e.clientY, window.innerHeight - 250)
+  ctx.visible = true
+}
+function closeCtxMenu() {
+  ctx.visible = false
+}
 
 function addTab(r) {
   if (r.path === HOME) return
@@ -278,12 +344,48 @@ function goTab(path) {
 }
 
 function closeTab(path) {
+  if (path === HOME) return // 首页固定, 中键/右键都关不掉
   const idx = tabs.value.findIndex((t) => t.path === path)
   if (idx === -1) return
   tabs.value.splice(idx, 1)
   if (path === route.path) {
     const next = tabs.value[idx] || tabs.value[idx - 1] || tabs.value[0]
     router.push(next ? next.path : HOME)
+  }
+}
+
+/** 批量关闭: 首页永保留; 若当前激活页被关, 跳到剩余最后一个 */
+function closeMany(paths) {
+  const toClose = new Set(paths.filter((p) => p !== HOME))
+  const wasActive = toClose.has(route.path)
+  tabs.value = tabs.value.filter((t) => !toClose.has(t.path))
+  if (wasActive) {
+    router.push(tabs.value[tabs.value.length - 1]?.path || HOME)
+  }
+}
+
+/** 刷新指定标签: 非当前页先切过去, 再重渲染(不整页 reload) */
+async function refreshTab(path) {
+  if (path !== route.path) {
+    await router.push(path)
+  }
+  reloadKey.value++
+}
+
+function onCtxCommand(cmd) {
+  const idx = ctxIndex.value
+  ctx.visible = false
+  switch (cmd) {
+    case 'refresh': refreshTab(ctx.path); break
+    case 'close': if (canCloseCtx.value) closeTab(ctx.path); break
+    case 'closeOthers':
+      if (canCloseOthers.value) {
+        closeMany(tabs.value.filter((t) => t.path !== HOME && t.path !== ctx.path).map((t) => t.path))
+      }
+      break
+    case 'closeLeft': if (canCloseLeft.value) closeMany(tabs.value.slice(0, idx).map((t) => t.path)); break
+    case 'closeRight': if (canCloseRight.value) closeMany(tabs.value.slice(idx + 1).map((t) => t.path)); break
+    case 'closeAll': closeMany(tabs.value.map((t) => t.path)); break
   }
 }
 
@@ -318,14 +420,28 @@ function handleCommand(command) {
   }
 }
 
+// ---- 右键菜单全局收起: 点外部 / 页面滚动 / Esc ----
+function onGlobalKeydown(e) {
+  if (e.key === 'Escape') closeCtxMenu()
+}
+
 // ---- 初始化: 拉取当前用户信息, 刷新角色(兼容已有登录会话 / 直接访问) ----
 onMounted(async () => {
+  document.addEventListener('click', closeCtxMenu)
+  document.addEventListener('scroll', closeCtxMenu, true)
+  document.addEventListener('keydown', onGlobalKeydown)
   try {
     const info = await getInfo()
     auth.setRole(info?.role || '')
   } catch (e) {
     // 拉取失败时不阻断页面渲染
   }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeCtxMenu)
+  document.removeEventListener('scroll', closeCtxMenu, true)
+  document.removeEventListener('keydown', onGlobalKeydown)
 })
 </script>
 
@@ -581,6 +697,41 @@ onMounted(async () => {
   color: #fff;
   background: #2d4a8f;
   border-color: #2d4a8f;
+}
+
+/* 标签右键菜单(Teleport 到 body, fixed 定位) */
+.tab-ctx-menu {
+  position: fixed;
+  z-index: 3000;
+  width: 140px;
+  padding: 4px 0;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  user-select: none;
+}
+.ctx-item {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 14px;
+  color: #303133;
+  cursor: pointer;
+}
+.ctx-item:hover:not(.disabled) {
+  color: #2d4a8f;
+  background: #eef2fb;
+}
+.ctx-item.disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+.ctx-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: #ebeef5;
+  pointer-events: none;
 }
 
 /* 内容区 */
