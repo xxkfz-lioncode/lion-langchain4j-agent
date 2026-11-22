@@ -231,6 +231,20 @@
     </dependencies>
 
     <build>
+        <!-- 前端构建产物(frontend/dist, 由 npm run build 产出)打进 jar 的 classpath:/static,
+             实现前后端同 jar 启动; dist 不存在时该目录自动跳过, 不影响纯后端构建 -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>frontend/dist</directory>
+                <targetPath>static</targetPath>
+                <includes>
+                    <include>**/*</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
@@ -246,4 +260,50 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- -Pfrontend: 构建时自动执行 npm install + npm run build(需要联网, 首次会下载 Node v20);
+             不加该 profile 则直接用 frontend/dist 里已有的产物(手动 npm run build 过即可) -->
+        <profile>
+            <id>frontend</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <version>1.15.1</version>
+                        <configuration>
+                            <workingDirectory>frontend</workingDirectory>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>install-node-and-npm</id>
+                                <goals>
+                                    <goal>install-node-and-npm</goal>
+                                </goals>
+                                <configuration>
+                                    <nodeVersion>v20.18.1</nodeVersion>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>npm-install</id>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>npm-build</id>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <configuration>
+                                    <arguments>run build</arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>
