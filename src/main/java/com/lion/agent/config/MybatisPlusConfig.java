@@ -12,7 +12,7 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 @MapperScan({"com.lion.agent.mapper", "com.lion.agent.ai.rag.mapper", "com.lion.agent.ai.observability",
-        "com.lion.agent.text2sql.mapper"})
+        "com.lion.agent.text2sql.mapper", "com.lion.agent.model.mapper"})
 public class MybatisPlusConfig {
 
     @Bean

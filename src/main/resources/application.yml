@@ -184,6 +184,11 @@ resilience4j:
 # 当前: 已切到 stdio 模式, 接项目自带的零依赖演示 server(mcp-server/index.mjs),
 #       暴露 echo / add / now 三个工具; 可用 node 直接启动, 无需 npm install。
 lion:
+  # ---- 模型管理(lion.model-config.*): 页面化维护的 LLM 接入配置 ----
+  # key-secret: api_key 落库前 AES-256-CBC 加密的密钥(生产必须用环境变量覆盖);
+  # 未配置时用开发默认值并打 WARN。更换密钥后历史密文无法解密(列表显示脱敏占位)。
+  model-config:
+    key-secret: ${MODEL_KEY_SECRET:}
   # ---- 图像生成(DashScope 原生通义万相接口, 由 ImageTools 暴露为 @Tool) ----
   # 注意: OpenAI 兼容模式不支持 /images/generations(404), 画图必须走原生 WanxImageModel
   image:

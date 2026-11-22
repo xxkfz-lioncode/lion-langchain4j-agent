@@ -130,6 +130,12 @@ const routes = [
         meta: { title: '用户管理', parentTitle: '系统管理', requiresAuth: true }
       },
       {
+        path: 'model-manage',
+        name: 'model-manage',
+        component: () => import('@/views/manage/ModelManageView.vue'),
+        meta: { title: '模型管理', parentTitle: '系统管理', requiresAuth: true }
+      },
+      {
         path: 'llm-log',
         name: 'llm-log',
         component: () => import('@/views/ObservabilityView.vue'),

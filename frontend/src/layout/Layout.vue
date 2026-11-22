@@ -175,6 +175,7 @@ import {
   HomeFilled,
   ChatLineSquare,
   ChatDotRound,
+  Cpu,
   Collection,
   DataLine,
   MagicStick,
@@ -246,6 +247,7 @@ const MENU = [
     type: 'group', key: 'system', label: '系统管理', icon: Setting,
     children: [
       { path: '/user', label: '用户管理', icon: User, adminOnly: true },
+      { path: '/model-manage', label: '模型管理', icon: Cpu, adminOnly: true },
       { path: '/llm-log', label: 'LLM 调用日志', icon: Odometer },
       { path: '/api-doc', label: '接口文档', icon: Document }
     ]

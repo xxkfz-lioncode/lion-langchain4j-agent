@@ -337,3 +337,27 @@ INSERT INTO `biz_order`
 -- Text2SQL readonly account: SELECT only, for AI-generated queries (see application.yml spring.datasource.readonly)
 CREATE USER IF NOT EXISTS 'lion_query_ro'@'%' IDENTIFIED BY 'Lion_ro_2026';
 GRANT SELECT ON lion_agent_4j.* TO 'lion_query_ro'@'%';
+
+-- ====================================================================
+-- 模型管理(t_model_config): 页面化维护 LLM 接入配置(站点/密钥/模型名/参数)
+-- 一期仅接入 chat 用途; api_key 以 AES-256-CBC 加密落库(密钥: MODEL_KEY_SECRET)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS t_model_config (
+  id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+  name           VARCHAR(64)  NOT NULL COMMENT '展示名(唯一), 如: 千问-plus-生产',
+  provider       VARCHAR(32)  NOT NULL DEFAULT 'openai-compatible' COMMENT '协议族',
+  base_url       VARCHAR(255) NOT NULL COMMENT '站点地址(OpenAI 兼容入口)',
+  api_key_cipher VARCHAR(512) NOT NULL COMMENT 'API Key(AES 加密密文, 明文永不落库)',
+  model_name     VARCHAR(64)  NOT NULL COMMENT '模型名, 如 qwen-plus / deepseek-v3',
+  purpose        VARCHAR(16)  NOT NULL DEFAULT 'chat' COMMENT '用途: chat/embedding/rerank/image',
+  temperature    DECIMAL(3,2) NULL COMMENT '温度(可空=模型默认)',
+  timeout_ms     INT          NULL COMMENT '请求超时(ms)',
+  enabled        TINYINT      NOT NULL DEFAULT 1 COMMENT '1 启用 / 0 停用',
+  is_default     TINYINT      NOT NULL DEFAULT 0 COMMENT '同用途默认模型(至多一条)',
+  status         VARCHAR(16)  NOT NULL DEFAULT 'untested' COMMENT '最近连通测试结果: untested/ok/fail',
+  remark         VARCHAR(255) NULL COMMENT '备注',
+  create_time    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  update_time    DATETIME     NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='模型接入配置(页面化管理, 运行时动态生效)';
