@@ -1,12 +1,10 @@
 <template>
   <div class="model-manage">
     <div class="page-toolbar">
-      <el-tabs v-model="purpose" class="purpose-tabs" @tab-change="load">
-        <el-tab-pane label="对话模型" name="chat" />
-        <el-tab-pane label="向量模型" name="embedding" disabled />
-        <el-tab-pane label="重排模型" name="rerank" disabled />
-        <el-tab-pane label="图像模型" name="image" disabled />
-      </el-tabs>
+      <div class="toolbar-title">
+        <h3>模型站点</h3>
+        <span class="toolbar-sub">站点是唯一一级维度: 同一站点下按「对话 / 向量」分组管理, 共享 URL 与密钥</span>
+      </div>
       <el-button type="primary" :icon="Plus" @click="openSiteForm">新建站点</el-button>
     </div>
 
@@ -24,7 +22,7 @@
           <div class="site-url" :title="s.baseUrl">{{ s.baseUrl }}</div>
           <div class="site-meta">
             <span>Key {{ s.apiKeyMasked }}</span>
-            <span>默认 {{ s.defaultModel }}</span>
+            <span>{{ s.chatCount }} 对话 · {{ s.embCount }} 向量</span>
           </div>
         </div>
       </aside>
@@ -40,54 +38,67 @@
             <div class="detail-actions">
               <el-button size="small" @click="openSiteEdit(activeSite)">编辑站点</el-button>
               <el-button size="small" type="danger" plain @click="onDeleteSite">删除站点</el-button>
-              <el-button size="small" type="primary" :icon="Plus" @click="openModelNew(activeSite)">新建模型</el-button>
             </div>
           </div>
           <div class="site-summary">
-            <span>模型数 <b>{{ activeSite.models.length }}</b></span>
-            <span>已连通 <b>{{ activeSite.okCount }}</b></span>
-            <span>默认模型 <b>{{ activeSite.defaultModel }}</b></span>
             <span>API Key <b class="m-key">{{ activeSite.apiKeyMasked }}</b></span>
+            <span>已连通 <b>{{ activeSite.okCount }} / {{ activeSite.models.length }}</b></span>
+            <span>对话默认 <b>{{ chatGroup?.defaultModel || '未设置' }}</b></span>
+            <span>向量默认 <b>{{ embGroup?.defaultModel || '未设置' }}</b></span>
           </div>
-          <el-table :data="activeSite.models" class="model-table">
-            <el-table-column label="名称" min-width="140">
-              <template #default="{ row }">
-                <span class="m-name" :title="row.remark">{{ row.name }}</span>
+
+          <!-- 同一站点下按模型类型分组, 各组独立新建/设默认 -->
+          <div v-for="g in activeGroups" :key="g.purpose" class="model-group">
+            <div class="group-head">
+              <span class="group-title">{{ g.label }}</span>
+              <el-tag size="small" round effect="plain">{{ g.models.length }}</el-tag>
+              <span class="group-default">默认 {{ g.defaultModel }}</span>
+              <el-button class="group-add" size="small" type="primary" plain :icon="Plus"
+                         @click="openModelNew(activeSite, g.purpose)">新建{{ g.label }}</el-button>
+            </div>
+            <el-table :data="g.models" class="model-table">
+              <el-table-column label="名称" min-width="140">
+                <template #default="{ row }">
+                  <span class="m-name" :title="row.remark">{{ row.name }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="modelName" label="模型名" width="150" />
+              <el-table-column v-if="g.purpose === 'chat'" label="温度" width="80" align="center">
+                <template #default="{ row }">{{ row.temperature ?? '-' }}</template>
+              </el-table-column>
+              <el-table-column label="连通状态" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag size="small" round :type="row.status === 'ok' ? 'success' : row.status === 'fail' ? 'danger' : 'info'">
+                    {{ row.status === 'ok' ? '已连通' : row.status === 'fail' ? '失败' : '未测试' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="默认" width="110" align="center">
+                <template #default="{ row }">
+                  <el-tag v-if="row.isDefault === 1" type="success" effect="light" size="small" round>已默认</el-tag>
+                  <el-button v-else link type="primary" size="small" :disabled="row.enabled !== 1"
+                             :title="row.enabled !== 1 ? '请先启用该模型' : '设为该用途的默认模型'"
+                             @click="onSetDefault(row)">设为默认</el-button>
+                </template>
+              </el-table-column>
+              <el-table-column label="启停" width="70" align="center">
+                <template #default="{ row }">
+                  <el-switch :model-value="row.enabled === 1" @change="(v) => onToggle(row, v)" />
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="220" align="center" fixed="right">
+                <template #default="{ row }">
+                  <el-button link type="primary" size="small" :loading="testingId === row.id" @click="onTest(row)">测试</el-button>
+                  <el-button link type="primary" size="small" @click="openCopy(row)">复制</el-button>
+                  <el-button link type="primary" size="small" @click="openForm(row)">编辑</el-button>
+                  <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
+                </template>
+              </el-table-column>
+              <template #empty>
+                <span class="group-empty">该站点暂无{{ g.label }}, 点击「新建{{ g.label }}」添加</span>
               </template>
-            </el-table-column>
-            <el-table-column prop="modelName" label="模型名" width="150" />
-            <el-table-column label="温度" width="80" align="center">
-              <template #default="{ row }">{{ row.temperature ?? '-' }}</template>
-            </el-table-column>
-            <el-table-column label="连通状态" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag size="small" round :type="row.status === 'ok' ? 'success' : row.status === 'fail' ? 'danger' : 'info'">
-                  {{ row.status === 'ok' ? '已连通' : row.status === 'fail' ? '失败' : '未测试' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="默认" width="110" align="center">
-              <template #default="{ row }">
-                <el-tag v-if="row.isDefault === 1" type="success" effect="light" size="small" round>已默认</el-tag>
-                <el-button v-else link type="primary" size="small" :disabled="row.enabled !== 1"
-                           :title="row.enabled !== 1 ? '请先启用该模型' : '设为该用途的默认模型'"
-                           @click="onSetDefault(row)">设为默认</el-button>
-              </template>
-            </el-table-column>
-            <el-table-column label="启停" width="70" align="center">
-              <template #default="{ row }">
-                <el-switch :model-value="row.enabled === 1" @change="(v) => onToggle(row, v)" />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="220" align="center" fixed="right">
-              <template #default="{ row }">
-                <el-button link type="primary" size="small" :loading="testingId === row.id" @click="onTest(row)">测试</el-button>
-                <el-button link type="primary" size="small" @click="openCopy(row)">复制</el-button>
-                <el-button link type="primary" size="small" @click="openForm(row)">编辑</el-button>
-                <el-button link type="danger" size="small" @click="onDelete(row)">删除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+            </el-table>
+          </div>
         </template>
         <el-empty v-else description="请选择或新建一个站点" />
       </section>
@@ -101,9 +112,17 @@
     <el-drawer v-model="form.visible" size="480px" :destroy-on-close="true" :title="drawerTitle">
       <el-alert v-if="form.mode !== 'site-new'" type="info" :closable="false" show-icon class="form-alert"
                 title="站点信息由所属站点继承, 如需修改请用「编辑站点」" />
+      <el-alert v-if="form.purpose === 'embedding'" type="warning" :closable="false" show-icon class="form-alert"
+                title="向量模型与 Milvus collection 维度强耦合(当前 1024): 测试连通会返回实际维度, 不一致需重建向量库" />
       <el-form ref="formRef" :model="form" :rules="rules" label-width="92px" label-position="left">
         <el-form-item label="名称" prop="name">
           <el-input v-model="form.name" maxlength="64" placeholder="如: 千问-plus-生产" />
+        </el-form-item>
+        <el-form-item label="模型用途" prop="purpose">
+          <el-select v-model="form.purpose" :disabled="form.mode !== 'site-new'">
+            <el-option label="对话模型" value="chat" />
+            <el-option label="向量模型" value="embedding" />
+          </el-select>
         </el-form-item>
         <el-form-item label="协议族" prop="provider">
           <el-select v-model="form.provider" disabled>
@@ -121,10 +140,10 @@
         <el-form-item label="模型名" prop="modelName">
           <el-select v-model="form.modelName" filterable allow-create default-first-option
                      placeholder="选择常用模型或直接输入">
-            <el-option v-for="m in COMMON_MODELS" :key="m" :label="m" :value="m" />
+            <el-option v-for="m in MODEL_OPTIONS" :key="m" :label="m" :value="m" />
           </el-select>
         </el-form-item>
-        <el-form-item label="温度" prop="temperature">
+        <el-form-item v-if="form.purpose === 'chat'" label="温度" prop="temperature">
           <el-slider v-model="form.temperature" :min="0" :max="2" :step="0.1" style="width: 100%" />
         </el-form-item>
         <el-form-item label="超时(ms)" prop="timeoutMs">
@@ -177,16 +196,16 @@ import {
   toggleModelConfig, setDefaultModelConfig, testModelConfig, updateModelSite, deleteModelSite
 } from '@/api/model'
 
-/** 常用模型名(可手输覆盖, OpenAI 兼容站点模型名自由填写) */
+/** 常用模型名(可手输覆盖, OpenAI 兼容站点模型名自由填写), 按用途区分 */
 const COMMON_MODELS = ['qwen-plus', 'qwen-max', 'qwen-turbo', 'qwen3-max', 'deepseek-v3', 'deepseek-r1', 'kimi-k2', 'glm-4-plus']
+const EMBEDDING_MODELS = ['text-embedding-v4', 'text-embedding-v3', 'text-embedding-v1']
 
-const purpose = ref('chat')
 const list = ref([])
 const loading = ref(false)
 const testingId = ref(null)
 const activeUrl = ref('')
 
-/** 按 baseUrl 把扁平配置聚合成站点(主从视图的一级数据) */
+/** 按 baseUrl 把扁平配置聚合成站点(跨用途: 同一站点下混配对话/向量模型) */
 function hostOf(url) {
   try { return new URL(url).host } catch (e) { return url }
 }
@@ -201,11 +220,28 @@ const sites = computed(() => {
   return [...map.values()].map((s) => ({
     ...s,
     host: hostOf(s.baseUrl),
-    defaultModel: s.models.find((m) => m.isDefault === 1)?.modelName || '未设置',
+    chatCount: s.models.filter((m) => m.purpose === 'chat').length,
+    embCount: s.models.filter((m) => m.purpose === 'embedding').length,
     okCount: s.models.filter((m) => m.status === 'ok').length
   }))
 })
 const activeSite = computed(() => sites.value.find((s) => s.baseUrl === activeUrl.value) || sites.value[0] || null)
+
+/** 站点详情按用途分组(各组独立新建/设默认) */
+const GROUP_DEFS = [
+  { purpose: 'chat', label: '对话模型' },
+  { purpose: 'embedding', label: '向量模型' }
+]
+const activeGroups = computed(() => {
+  const s = activeSite.value
+  if (!s) return []
+  return GROUP_DEFS.map((g) => {
+    const models = s.models.filter((m) => m.purpose === g.purpose)
+    return { ...g, models, defaultModel: models.find((m) => m.isDefault === 1)?.modelName || '未设置' }
+  })
+})
+const chatGroup = computed(() => activeGroups.value.find((g) => g.purpose === 'chat'))
+const embGroup = computed(() => activeGroups.value.find((g) => g.purpose === 'embedding'))
 watch(sites, (ss) => {
   if (ss.length && !ss.some((s) => s.baseUrl === activeUrl.value)) {
     activeUrl.value = ss[0].baseUrl
@@ -215,14 +251,16 @@ watch(sites, (ss) => {
 // ---------------- 表单(mode: site-new / model-new / model-edit / model-copy) ----------------
 const formRef = ref()
 const form = reactive({
-  visible: false, mode: 'site-new', id: null, copyKeyFrom: null,
+  visible: false, mode: 'site-new', id: null, copyKeyFrom: null, purpose: 'chat',
   name: '', provider: 'openai-compatible', baseUrl: '', apiKey: '',
   modelName: '', temperature: 0.7, timeoutMs: 120000, remark: ''
 })
+/** 常用模型名选项跟随当前模型用途 */
+const MODEL_OPTIONS = computed(() => form.purpose === 'embedding' ? EMBEDDING_MODELS : COMMON_MODELS)
 const drawerTitle = computed(() => ({
-  'site-new': '新建站点',
-  'model-new': '在该站点下新建模型',
-  'model-edit': '编辑模型',
+  'site-new': '新建站点(含首个模型)',
+  'model-new': '新建' + (form.purpose === 'embedding' ? '向量' : '对话') + '模型',
+  'model-edit': '编辑' + (form.purpose === 'embedding' ? '向量' : '对话') + '模型',
   'model-copy': '复制新增(改名称/模型名即可)'
 }[form.mode]))
 const keyPlaceholder = computed(() => form.mode === 'site-new' ? 'sk-...'
@@ -248,7 +286,8 @@ onMounted(load)
 async function load() {
   loading.value = true
   try {
-    list.value = (await listModelConfigs(purpose.value)) || []
+    // 一次拉全部用途, 前端按站点/类型聚合(站点是唯一一级维度)
+    list.value = (await listModelConfigs()) || []
   } finally {
     loading.value = false
   }
@@ -257,6 +296,7 @@ async function load() {
 function resetForm(mode) {
   testResult.value = null
   form.mode = mode
+  form.purpose = 'chat'          // site-new 默认对话; model-new/edit/copy 由调用方覆盖
   form.id = null
   form.copyKeyFrom = null
   form.name = ''
@@ -276,16 +316,20 @@ function openSiteForm() {
 }
 
 /** 站点内新建模型: 站点/密钥只读继承, 后端按 copyKeyFrom 复用密文 */
-function openModelNew(site) {
+function openModelNew(site, type) {
   resetForm('model-new')
+  form.purpose = type
   form.baseUrl = site.baseUrl
-  form.copyKeyFrom = site.models[0].id
+  // 复用同用途模型的密文(同一站点密钥本就共享, 取不到时退回首条)
+  const src = site.models.find((m) => m.purpose === type) || site.models[0]
+  form.copyKeyFrom = src.id
 }
 
 /** 编辑模型: 站点信息只读(避免同一站点被拆成两个) */
 function openForm(row) {
   resetForm('model-edit')
   form.id = row.id
+  form.purpose = row.purpose
   form.name = row.name
   form.provider = row.provider
   form.baseUrl = row.baseUrl
@@ -306,6 +350,7 @@ function nextCopyName(base) {
 function openCopy(row) {
   resetForm('model-copy')
   form.id = null
+  form.purpose = row.purpose
   form.copyKeyFrom = row.id
   form.name = nextCopyName(row.name)
   form.provider = row.provider
@@ -327,6 +372,9 @@ async function onSave() {
   saving.value = true
   try {
     const { visible, mode, ...payload } = form
+    if (form.purpose !== 'chat') {
+      payload.temperature = null   // 向量/其他用途无温度概念
+    }
     const id = form.id || (await createModelConfig(payload))
     if (form.id) {
       await updateModelConfig(form.id, payload)
@@ -451,11 +499,18 @@ async function onDelete(row) {
 .page-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   margin-bottom: 12px;
 }
-.purpose-tabs { flex: 1; }
-.purpose-tabs :deep(.el-tabs__header) { margin-bottom: 0; }
+.toolbar-title h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+.toolbar-sub {
+  font-size: 12px;
+  color: #909399;
+}
 
 .master-detail {
   display: flex;
@@ -566,6 +621,28 @@ async function onDelete(row) {
   color: #606266;
 }
 .site-summary b { color: #303133; margin-left: 4px; }
+
+.model-group { margin-bottom: 18px; }
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.group-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+}
+.group-default {
+  font-size: 12px;
+  color: #909399;
+  flex: 1;
+}
+.group-empty {
+  font-size: 12px;
+  color: #c0c4cc;
+}
 .m-name { font-weight: 600; }
 .m-key { font-family: monospace; color: #909399; font-size: 12px; }
 

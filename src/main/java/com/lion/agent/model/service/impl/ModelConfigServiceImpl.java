@@ -11,6 +11,7 @@ import com.lion.agent.model.mapper.ModelConfigMapper;
 import com.lion.agent.model.service.ModelConfigService;
 import com.lion.agent.model.vo.ModelConfigVO;
 import dev.langchain4j.model.openai.OpenAiChatModel;
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -182,18 +183,37 @@ public class ModelConfigServiceImpl implements ModelConfigService {
         if (!StringUtils.hasText(dto.getBaseUrl()) || !StringUtils.hasText(dto.getModelName())) {
             throw new BusinessException("测试连通需要站点地址与模型名");
         }
+        String purpose = StringUtils.hasText(dto.getPurpose()) ? dto.getPurpose() : "chat";
+        if ("rerank".equals(purpose) || "image".equals(purpose)) {
+            throw new BusinessException("该用途暂不支持连通测试(二期接入)");
+        }
         Map<String, Object> result = new HashMap<>();
         long start = System.currentTimeMillis();
         try {
             // 临时实例(不进缓存、不落库); 15s 超时 + 不重试, 快速给出结论
-            ChatModel4Test model = new ChatModel4Test(dto);
-            String reply = model.chat("ping");
-            long elapsed = System.currentTimeMillis() - start;
-            result.put("ok", true);
-            result.put("elapsedMs", elapsed);
-            result.put("reply", reply == null || reply.isBlank() ? "(空响应)"
-                    : reply.substring(0, Math.min(reply.length(), 100)));
-            result.put("error", "");
+            if ("embedding".equals(purpose)) {
+                // 向量模型: 用真实 embed 请求测, 拿回维度一并展示(与 Milvus 维度核对的关键信息)
+                OpenAiEmbeddingModel model = OpenAiEmbeddingModel.builder()
+                        .baseUrl(dto.getBaseUrl())
+                        .apiKey(resolveKeyForTest(dto))
+                        .modelName(dto.getModelName())
+                        .timeout(Duration.ofMillis(15000))
+                        .maxRetries(0)
+                        .build();
+                int dims = model.embed("连通性测试").content().dimension();
+                result.put("ok", true);
+                result.put("elapsedMs", System.currentTimeMillis() - start);
+                result.put("reply", "向量化成功, 维度 " + dims + " (Milvus 当前维度请核对)");
+                result.put("error", "");
+            } else {
+                ChatModel4Test model = new ChatModel4Test(dto);
+                String reply = model.chat("ping");
+                result.put("ok", true);
+                result.put("elapsedMs", System.currentTimeMillis() - start);
+                result.put("reply", reply == null || reply.isBlank() ? "(空响应)"
+                        : reply.substring(0, Math.min(reply.length(), 100)));
+                result.put("error", "");
+            }
         } catch (Exception e) {
             result.put("ok", false);
             result.put("elapsedMs", System.currentTimeMillis() - start);
