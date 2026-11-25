@@ -9,6 +9,7 @@ import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
+import com.lion.agent.ai.rag.pojo.vo.RagImagePageVO;
 import com.lion.agent.ai.rag.pojo.vo.RagParseProgressVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSegmentPageVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
@@ -140,6 +141,50 @@ public class RagController {
             @Parameter(description = "片段内容关键字(可空)")
             @RequestParam(value = "keyword", required = false) String keyword) {
         return R.ok(ragService.listSegments(id, page, size, keyword));
+    }
+
+    /**
+     * 文档图片列表(图片资源页): rag_image 表物理分页, 支持按文档/文件名/描述状态过滤
+     */
+    @Operation(summary = "文档图片列表", description = "解析 PDF 时提取并存储的内嵌图片; "
+            + "caption 为 VLM 看图说话预留, 当前为空")
+    @GetMapping("/images")
+    public R<RagImagePageVO> images(
+            @Parameter(description = "页码(1 起)", example = "1")
+            @RequestParam(value = "page", defaultValue = "1") long page,
+            @Parameter(description = "每页条数(1~100)", example = "12")
+            @RequestParam(value = "size", defaultValue = "12") long size,
+            @Parameter(description = "所属文档 id(可空 = 全部)")
+            @RequestParam(value = "docId", required = false) Long docId,
+            @Parameter(description = "文件名关键字(可空)")
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @Parameter(description = "仅看未描述图片", example = "false")
+            @RequestParam(value = "onlyNoCaption", defaultValue = "false") boolean onlyNoCaption) {
+        return R.ok(ragService.listImages(docId, page, size, keyword, onlyNoCaption));
+    }
+
+    /**
+     * 预览/下载图片字节: 走后端鉴权回吐, 不暴露对象存储地址(预览用 inline)
+     */
+    @Operation(summary = "图片内容", description = "按 mime 回吐图片字节; 前端 blob → objectURL 预览")
+    @GetMapping("/images/{id}/content")
+    public ResponseEntity<byte[]> imageContent(
+            @Parameter(description = "图片记录 id", required = true, example = "2")
+            @PathVariable("id") Long id) {
+        RagFileVO file = ragService.downloadImage(id);
+        String encodedName = URLEncoder.encode(file.getFileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(file.getFileType());
+        } catch (Exception e) {
+            mediaType = MediaType.IMAGE_PNG;
+        }
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedName)
+                .contentLength(file.getData().length)
+                .body(file.getData());
     }
 
     /**

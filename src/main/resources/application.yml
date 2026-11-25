@@ -204,6 +204,10 @@ lion:
     # 原始文件存储方式: local = 本地 upload 目录(默认, 零依赖) / minio = 对象存储(lion.minio.* 配置)
     # 切到 minio 后新上传文件进 MinIO; 存量本地文件仍按 rag_document.storage_type 走对应存储, 无需迁移
     storage-type: ${RAG_STORAGE_TYPE:minio}
+    pdf:
+      # PDF 内嵌图片提取开关: 提取后存 FileStorage + 落 rag_image 留底(无模型费用);
+      # VLM 看图说话未实现前图片不参与向量检索, 仅留底供后续填充 caption
+      image-extract: true
     # 上传文件保存目录(storage-type=local 时使用): 相对运行目录, 不存在会自动创建(已被 .gitignore 忽略)
     upload-dir: upload
     # 启动时是否把 src/main/resources/docs 下的文档灌入向量库(MilvusEmbeddingStore 追加式写入, 不查重):

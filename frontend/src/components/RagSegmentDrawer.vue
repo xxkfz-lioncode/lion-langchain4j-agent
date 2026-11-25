@@ -37,8 +37,16 @@
       <el-empty v-if="!loading && records.length === 0" description="暂无片段" />
       <div v-for="s in records" :key="s.id" class="seg-card" @click="toggle(s.seq)">
         <div class="seg-meta">
-          <span class="seg-seq">#{{ s.seq }}</span>
+          <span class="seg-seq" title="片段顺序号: 本次解析第几个产出(从 1 起); 重新解析会按新切分结果重排">片段 {{ s.seq + 1 }}</span>
           <span v-if="s.page != null" class="seg-page">第 {{ s.page }} 页</span>
+          <el-tag v-if="s.elementType && s.elementType !== 'text' && s.elementType !== 'paragraph'"
+                  size="small" :type="s.elementType === 'table' ? 'warning' : 'info'"
+                  effect="plain" round>{{ typeLabel(s.elementType) }}</el-tag>
+          <span v-if="s.sectionPath" class="seg-section" :title="s.sectionPath">{{ s.sectionPath }}</span>
+          <span v-if="s.rowStart != null" class="seg-rows"
+                title="表格数据行(不含每块重复的表头): 本片段覆盖范围 / 整张表总行数">
+            第 {{ s.rowStart }}~{{ s.rowEnd }} 行 / 共 {{ s.rowTotal }} 行
+          </span>
           <span class="seg-chars">{{ s.charCount }} 字</span>
           <span class="seg-actions" @click.stop>
             <el-button link type="primary" size="small" @click="toggle(s.seq)">
@@ -141,6 +149,11 @@ function onSearch() {
   page.value = 1
   expanded.value = []
   load()
+}
+
+/** 元素类型 → 展示文案 */
+function typeLabel(t) {
+  return { table: '表格', title: '标题', list: '列表', paragraph: '段落', text: '文本' }[t] || t
 }
 
 function toggle(seq) {
@@ -259,6 +272,22 @@ function display(content) {
 .seg-chars {
   font-size: 12px;
   color: #909399;
+}
+.seg-rows {
+  font-size: 12px;
+  color: #b8860b;
+  background: #fdf6ec;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.seg-section {
+  font-size: 12px;
+  color: #2d6cdf;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
 }
 .seg-actions {
   margin-left: auto;

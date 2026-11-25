@@ -6,8 +6,10 @@ import com.lion.agent.ai.rag.pojo.vo.*;
 import com.lion.agent.common.exception.BusinessException;
 
 import com.lion.agent.ai.rag.pojo.entity.RagDocumentEntity;
+import com.lion.agent.ai.rag.pojo.entity.RagImageEntity;
 import com.lion.agent.ai.rag.pojo.entity.RagSegmentEntity;
 import com.lion.agent.ai.rag.mapper.RagDocumentMapper;
+import com.lion.agent.ai.rag.mapper.RagImageMapper;
 import com.lion.agent.ai.rag.mapper.RagSegmentMapper;
 import com.lion.agent.ai.rag.rerank.RagRerankProperties;
 import com.lion.agent.ai.rag.rerank.RagReranker;
@@ -40,8 +42,10 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * RAG 知识库服务实现
@@ -81,6 +85,16 @@ public class RagServiceImpl implements RagService {
     public static final String META_FILE_NAME = "fileName";
     /** 向量片段元数据: PDF 页码(引用溯源"第 N 页"展示用; txt/md 无页码) */
     public static final String META_PAGE = "page";
+    /** 向量片段元数据: 元素类型(table/paragraph/list/text, 结构化解析产出) */
+    public static final String META_ELEMENT_TYPE = "elementType";
+    /** 向量片段元数据: 章节路径(如 "部署要求 > 2.1 服务器要求") */
+    public static final String META_SECTION = "section";
+    /** 向量片段元数据: 表格片段起始数据行号(1 起, 不含表头; 仅 table 类型有值) */
+    public static final String META_ROW_START = "rowStart";
+    /** 向量片段元数据: 表格片段结束数据行号 */
+    public static final String META_ROW_END = "rowEnd";
+    /** 向量片段元数据: 整张表的数据行总数(用于展示"第 1~40 行 / 共 1000 行") */
+    public static final String META_ROW_TOTAL = "rowTotal";
 
     private final ChatModel chatModel;
     /** 切分器工厂: 按请求参数(方式/块大小/重叠/正则)构建切分器, 支持前端自定义切分 */
@@ -102,6 +116,8 @@ public class RagServiceImpl implements RagService {
     private final RagRerankProperties rerankProperties;
     /** 片段表 Mapper: 删除文档时同步清理(BM25 关键词路数据源) */
     private final RagSegmentMapper ragSegmentMapper;
+    /** 图片表 Mapper: 删除文档时同步清理(提取图片留底) */
+    private final RagImageMapper ragImageMapper;
 
     public RagServiceImpl(ChatModel chatModel,
                           EmbeddingStore<TextSegment> embeddingStore,
@@ -113,6 +129,7 @@ public class RagServiceImpl implements RagService {
                           RagReranker reranker,
                           RagRerankProperties rerankProperties,
                           RagSegmentMapper ragSegmentMapper,
+                          RagImageMapper ragImageMapper,
                           @Value("${lion.rag.storage-type:local}") String activeStorageType) {
         this.chatModel = chatModel;
         this.embeddingStore = embeddingStore;
@@ -123,6 +140,7 @@ public class RagServiceImpl implements RagService {
         this.reranker = reranker;
         this.rerankProperties = rerankProperties;
         this.ragSegmentMapper = ragSegmentMapper;
+        this.ragImageMapper = ragImageMapper;
         this.storages = storageImpls.stream()
                 .collect(Collectors.toMap(FileStorage::type, Function.identity()));
         FileStorage active = storages.get(activeStorageType);
@@ -292,6 +310,11 @@ public class RagServiceImpl implements RagService {
             vo.setId(s.getId());
             vo.setSeq(s.getSeq());
             vo.setPage(s.getPage());
+            vo.setElementType(s.getElementType());
+            vo.setSectionPath(s.getSectionPath());
+            vo.setRowStart(s.getRowStart());
+            vo.setRowEnd(s.getRowEnd());
+            vo.setRowTotal(s.getRowTotal());
             vo.setCharCount(s.getContent() == null ? 0 : s.getContent().length());
             vo.setContent(s.getContent());
             records.add(vo);
@@ -303,6 +326,77 @@ public class RagServiceImpl implements RagService {
         vo.setPage(result.getCurrent());
         vo.setSize(result.getSize());
         vo.setRecords(records);
+        return vo;
+    }
+
+    @Override
+    public RagImagePageVO listImages(Long docId, long page, long size, String keyword, boolean onlyNoCaption) {
+        long safePage = Math.max(page, 1);
+        long safeSize = Math.min(Math.max(size, 1), 100);
+        // keyword.trim() 必须先算好: .like(condition, 列, 值) 的值参数是调用时求值,
+        // 写成 keyword.trim() 会在 keyword 为 null 时先炸(条件短路也救不了)
+        String kw = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        LambdaQueryWrapper<RagImageEntity> wrapper = new LambdaQueryWrapper<RagImageEntity>()
+                .eq(docId != null, RagImageEntity::getDocId, docId)
+                .like(kw != null, RagImageEntity::getFileName, kw)
+                .and(onlyNoCaption, w -> w.isNull(RagImageEntity::getCaption)
+                        .or().eq(RagImageEntity::getCaption, ""))
+                .orderByDesc(RagImageEntity::getId);
+        Page<RagImageEntity> result = ragImageMapper.selectPage(Page.of(safePage, safeSize), wrapper);
+
+        // 批量补文档名(每页最多 100 条, 一次 IN 查询, 避免逐行查库)
+        Set<Long> docIds = result.getRecords().stream()
+                .map(RagImageEntity::getDocId).collect(Collectors.toSet());
+        Map<Long, String> docNames = docIds.isEmpty() ? Map.of()
+                : ragDocumentMapper.selectBatchIds(docIds).stream()
+                .collect(Collectors.toMap(RagDocumentEntity::getId,
+                        d -> d.getFileName() == null ? "" : d.getFileName(), (a, b) -> a));
+
+        List<RagImageVO> records = new ArrayList<>(result.getRecords().size());
+        for (RagImageEntity img : result.getRecords()) {
+            RagImageVO vo = new RagImageVO();
+            vo.setId(img.getId());
+            vo.setDocId(img.getDocId());
+            vo.setDocName(docNames.get(img.getDocId()));
+            vo.setFileName(img.getFileName());
+            vo.setPage(img.getPage());
+            vo.setMime(img.getMime());
+            vo.setWidth(img.getWidth());
+            vo.setHeight(img.getHeight());
+            vo.setCaption(img.getCaption());
+            vo.setObjectKey(img.getObjectKey());
+            vo.setCreateTime(img.getCreateTime());
+            records.add(vo);
+        }
+
+        RagImagePageVO vo = new RagImagePageVO();
+        vo.setTotal(result.getTotal());
+        vo.setPages(result.getPages());
+        vo.setPage(result.getCurrent());
+        vo.setSize(result.getSize());
+        vo.setRecords(records);
+        return vo;
+    }
+
+    @Override
+    public RagFileVO downloadImage(Long id) {
+        if (id == null) {
+            throw new BusinessException("图片 id 不能为空");
+        }
+        RagImageEntity img = ragImageMapper.selectById(id);
+        if (img == null) {
+            throw new BusinessException("图片不存在: " + id);
+        }
+        // rag_image 未记 storage_type(历史数据可能跨存储切换), 在所有已注册实现中按对象Key 定位
+        String key = img.getObjectKey();
+        FileStorage storage = Stream.concat(storages.values().stream(), Stream.of(activeStorage))
+                .filter(s -> s.exists(key))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException("图片文件不存在(" + key + "), 可能已被清理"));
+        RagFileVO vo = new RagFileVO();
+        vo.setFileName(img.getFileName() == null ? "image.png" : img.getFileName());
+        vo.setFileType(img.getMime() == null ? "image/png" : img.getMime());
+        vo.setData(storage.load(key));
         return vo;
     }
 
@@ -345,9 +439,16 @@ public class RagServiceImpl implements RagService {
         embeddingStore.removeAll(MetadataFilterBuilder.metadataKey(META_DOC_ID)
                 .isEqualTo(String.valueOf(id)));
 
-        // 2. 同步删除片段表记录(BM25 关键词路数据源, 与向量保持一致)
+        // 2. 同步删除片段表记录(BM25 关键词路数据源, 与向量保持一致) + 提取的图片(行 + 存储对象)
         ragSegmentMapper.delete(new LambdaQueryWrapper<RagSegmentEntity>()
                 .eq(RagSegmentEntity::getDocId, id));
+        List<RagImageEntity> images = ragImageMapper.selectList(
+                new LambdaQueryWrapper<RagImageEntity>().eq(RagImageEntity::getDocId, id));
+        for (RagImageEntity img : images) {
+            storageOf(entity).delete(img.getObjectKey());
+        }
+        ragImageMapper.delete(new LambdaQueryWrapper<RagImageEntity>()
+                .eq(RagImageEntity::getDocId, id));
 
         // 3. 再删元数据记录
         ragDocumentMapper.deleteById(id);

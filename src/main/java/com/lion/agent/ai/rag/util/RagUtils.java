@@ -18,11 +18,12 @@ public final class RagUtils {
     private RagUtils() {
     }
 
-    /** 支持的知识文档扩展名(Hutool FileNameUtil.extName 返回不带点的扩展名) */
-    private static final Set<String> SUPPORTED_EXTS = Set.of("pdf", "txt", "md", "markdown");
+    /** 支持的知识文档扩展名(Hutool FileNameUtil.extName 返回不带点的扩展名; .doc 老格式不支持, 请转存 .docx) */
+    private static final Set<String> SUPPORTED_EXTS =
+            Set.of("pdf", "txt", "md", "markdown", "docx", "xlsx", "xls");
 
     /**
-     * 是否为支持的知识文档格式(.pdf/.txt/.md/.markdown)
+     * 是否为支持的知识文档格式(.pdf/.txt/.md/.markdown/.docx/.xlsx/.xls)
      */
     public static boolean isSupported(String fileName) {
         if (StrUtil.isBlank(fileName)) {
@@ -32,19 +33,19 @@ public final class RagUtils {
     }
 
     /**
-     * 按文件名取存储类型标识(pdf→pdf, md/markdown→md, 其余→txt)
+     * 按文件名取存储类型标识(pdf→pdf, md/markdown→md, docx→docx, xls/xlsx→xlsx, 其余→txt)
      * <p>
-     * 该类型同时决定解析器选择(pdf 走 ApachePdfBoxDocumentParser)与向量元数据展示。
+     * 该类型同时决定解析器选择(ElementParserRouter 路由)与向量元数据展示。
      */
     public static String typeOf(String fileName) {
         String ext = FileNameUtil.extName(StrUtil.nullToEmpty(fileName)).toLowerCase(Locale.ROOT);
-        if ("pdf".equals(ext)) {
-            return "pdf";
-        }
-        if ("md".equals(ext) || "markdown".equals(ext)) {
-            return "md";
-        }
-        return "txt";
+        return switch (ext) {
+            case "pdf" -> "pdf";
+            case "md", "markdown" -> "md";
+            case "docx" -> "docx";
+            case "xls", "xlsx" -> "xlsx";
+            default -> "txt";
+        };
     }
 
     /**

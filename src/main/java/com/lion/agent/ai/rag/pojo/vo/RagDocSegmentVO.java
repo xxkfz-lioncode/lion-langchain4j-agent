@@ -21,6 +21,21 @@ public class RagDocSegmentVO {
     @Schema(description = "PDF 页码(1 起; txt/md 等文本类为 null)", example = "1")
     private Integer page;
 
+    @Schema(description = "元素类型: title/paragraph/table/list/text", example = "table")
+    private String elementType;
+
+    @Schema(description = "章节路径(标题树)", example = "部署要求 > 2.1 服务器要求")
+    private String sectionPath;
+
+    @Schema(description = "表格片段起始数据行号(1 起, 不含重复表头; 非表格为 null)", example = "1")
+    private Integer rowStart;
+
+    @Schema(description = "表格片段结束数据行号", example = "40")
+    private Integer rowEnd;
+
+    @Schema(description = "整张表数据行总数(拆成多块时各块相同)", example = "1000")
+    private Integer rowTotal;
+
     @Schema(description = "片段字符数(前端展示用, 免去前端再算)", example = "286")
     private Integer charCount;
 

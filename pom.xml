@@ -136,6 +136,18 @@
             <artifactId>langchain4j-document-parser-apache-tika</artifactId>
             <version>1.0.0-beta4</version>
         </dependency>
+        <!-- PDF 表格抽取(tabula-java): 按表格线框识别 PDF 内嵌表格 → Markdown(PdfElementParser 用) -->
+        <dependency>
+            <groupId>technology.tabula</groupId>
+            <artifactId>tabula</artifactId>
+            <version>1.0.5</version>
+        </dependency>
+        <!-- Office 文档解析(Word/Excel): 结构化元素解析(DocxElementParser/XlsxElementParser)用 -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.5</version>
+        </dependency>
 
         <!-- SQL 解析与 AST 校验: 问数(SqlGuard)的核心依赖, 用于语法树级白名单/字段校验。
              版本需 Java 17+; 与项目 Spring Boot 3.5 / Java 17 兼容 -->

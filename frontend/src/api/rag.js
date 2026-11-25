@@ -55,6 +55,18 @@ export const downloadRagDocument = (id) =>
   request.get(`/api/rag/documents/${id}/download`, { responseType: 'blob' })
 
 /**
+ * 文档图片列表(图片资源页): rag_image 表物理分页
+ * params = { page(1起), size(默认12), docId(可空), keyword(文件名关键字), onlyNoCaption(boolean) }
+ * 返回 { total, pages, page, size, records: [{ id, docId, docName, fileName, page, mime,
+ *        width, height, caption, objectKey, createTime }] }
+ */
+export const getRagImages = (params = {}) => request.get('/api/rag/images', { params })
+
+/** 图片字节(blob): 前端 URL.createObjectURL(res.data) 生成缩略图/大图地址, 不暴露对象存储地址 */
+export const getRagImageContent = (id) =>
+  request.get(`/api/rag/images/${id}/content`, { responseType: 'blob' })
+
+/**
  * 知识库问答(阻塞式整段返回), 返回 { answer, sources }
  * sources: 引用来源 [{ docId, fileName, page(PDF 页码, 文本类为 null),
  *           score(精排相关性 0-100, rerank 关闭/失败时为向量相似度), vectorScore(向量召回分, 可 null),

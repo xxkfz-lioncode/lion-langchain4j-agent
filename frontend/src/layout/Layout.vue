@@ -197,7 +197,8 @@ import {
   Tools,
   Coin,
   SetUp,
-  Odometer
+  Odometer,
+  Picture
 } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { getInfo, logout } from '@/api/auth'
@@ -219,6 +220,7 @@ const MENU = [
     type: 'group', key: 'kb', label: '知识库', icon: Collection,
     children: [
       { path: '/rag', label: '知识库管理', icon: Document },
+      { path: '/rag-images', label: '图片资源', icon: Picture },
       { path: '/rag-chat', label: '知识问答', icon: Tickets },
       { path: '/vector', label: '向量库查询', icon: Coin }
     ]

@@ -4,6 +4,7 @@ import com.lion.agent.ai.rag.splitter.SplitterConfig;
 import com.lion.agent.ai.rag.pojo.vo.RagAnswerVO;
 import com.lion.agent.ai.rag.pojo.vo.RagDocumentVO;
 import com.lion.agent.ai.rag.pojo.vo.RagFileVO;
+import com.lion.agent.ai.rag.pojo.vo.RagImagePageVO;
 import com.lion.agent.ai.rag.pojo.vo.RagParseProgressVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSegmentPageVO;
 import com.lion.agent.ai.rag.pojo.vo.RagSplitterVO;
@@ -72,6 +73,21 @@ public interface RagService {
      * @return 分页片段明细
      */
     RagSegmentPageVO listSegments(Long docId, long page, long size, String keyword);
+
+    /**
+     * 文档图片分页(图片资源页): rag_image 表按 id 倒序物理分页, 支持按文档/文件名/描述状态过滤;
+     * 每条补齐所属文档名(批量查, 避免 N+1)。
+     *
+     * @param docId        所属文档 id(可空 = 全部文档)
+     * @param keyword      文件名关键字(可空)
+     * @param onlyNoCaption 是否仅看未描述的图片(VLM 落地前基本全为 true 的结果)
+     */
+    RagImagePageVO listImages(Long docId, long page, long size, String keyword, boolean onlyNoCaption);
+
+    /**
+     * 读取图片字节(图片资源页预览/下载): 按对象Key 在已注册的存储实现中自动定位(local/minio 均兼容)
+     */
+    RagFileVO downloadImage(Long id);
 
     /**
      * 删除单个文档: 先删其全部向量(按 docId 元数据过滤), 再删元数据记录

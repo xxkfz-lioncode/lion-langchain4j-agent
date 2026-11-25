@@ -9,7 +9,7 @@
             :http-request="handleUpload"
             :show-file-list="false"
             :before-upload="beforeUpload"
-            accept=".txt,.md,.pdf"
+            accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls"
             multiple
             :disabled="uploading"
           >
@@ -349,9 +349,9 @@ const MAX_SIZE = 20 * 1024 * 1024
 function beforeUpload(file) {
   const name = file.name || ''
   const lower = name.toLowerCase()
-  const supported = /\.(txt|md|markdown|pdf)$/.test(lower)
+  const supported = /\.(txt|md|markdown|pdf|docx|xlsx|xls)$/.test(lower)
   if (!supported) {
-    ElMessage.error('仅支持 .txt / .md / .pdf 格式的知识文档')
+    ElMessage.error('仅支持 .txt / .md / .pdf / .docx / .xlsx 格式的知识文档')
     return false
   }
   if (file.size > MAX_SIZE) {
@@ -560,9 +560,12 @@ function splitterShort(code) {
   return splitters.value.find((s) => s.code === code)?.shortLabel || code || '默认'
 }
 
-/** 文档/解析结果 → "递归 300/50"; 无切分信息返回空串 */
+/**
+ * 文档 → "递归 300/50": 仅已解析(status=1)才展示。
+ * 待解析时 DB 列默认值(recursive/300/50)会带出来, 但那是解析时才会真正指定的参数, 显示了会误导。
+ */
 function splitterLabel(item) {
-  if (!item || !item.splitterType) return ''
+  if (!item || item.status !== 1 || !item.splitterType) return ''
   return `${splitterShort(item.splitterType)} ${item.segmentSize}/${item.overlapSize}`
 }
 
@@ -751,7 +754,7 @@ onMounted(async () => {
   color: #2d6cdf;
 }
 
-/* 文件类型图标配色: pdf 红 / txt 绿 / md 蓝 */
+/* 文件类型图标配色: pdf 红 / txt 绿 / md 蓝 / docx 蓝 / xlsx 绿 */
 .doc-icon.type-pdf {
   color: #f56c6c;
 }
@@ -760,6 +763,12 @@ onMounted(async () => {
 }
 .doc-icon.type-md {
   color: #2d6cdf;
+}
+.doc-icon.type-docx {
+  color: #185abd;
+}
+.doc-icon.type-xlsx {
+  color: #1d8a4e;
 }
 
 /* ---------- 解析弹窗 ---------- */

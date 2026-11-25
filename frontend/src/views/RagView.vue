@@ -19,7 +19,7 @@
           :http-request="handleUpload"
           :show-file-list="false"
           :before-upload="beforeUpload"
-          accept=".txt,.md,.pdf"
+          accept=".txt,.md,.markdown,.pdf,.docx,.xlsx,.xls"
           multiple
           :disabled="uploading"
         >
@@ -428,9 +428,9 @@ const MAX_SIZE = 20 * 1024 * 1024
 function beforeUpload(file) {
   const name = file.name || ''
   const lower = name.toLowerCase()
-  const supported = /\.(txt|md|markdown|pdf)$/.test(lower)
+  const supported = /\.(txt|md|markdown|pdf|docx|xlsx|xls)$/.test(lower)
   if (!supported) {
-    ElMessage.error('仅支持 .txt / .md / .pdf 格式的知识文档')
+    ElMessage.error('仅支持 .txt / .md / .pdf / .docx / .xlsx 格式的知识文档')
     return false
   }
   if (file.size > MAX_SIZE) {

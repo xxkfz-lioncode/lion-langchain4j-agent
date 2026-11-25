@@ -101,10 +101,11 @@ CREATE TABLE IF NOT EXISTS `rag_document` (
     `file_name`     VARCHAR(255) NOT NULL COMMENT '文件名(带扩展名)',
     `file_size`     BIGINT       NOT NULL DEFAULT 0 COMMENT '文件大小(字节)',
     `file_type`     VARCHAR(16)  NOT NULL DEFAULT '' COMMENT '文件类型(扩展名小写, 如 pdf/txt/md)',
-    `splitter_type` VARCHAR(32)  NOT NULL DEFAULT 'recursive' COMMENT '切分方式: recursive/paragraph/sentence/line/word/character/regex',
-    `segment_size`  INT          NOT NULL DEFAULT 300 COMMENT '切分块大小(字符)',
-    `overlap_size`  INT          NOT NULL DEFAULT 50 COMMENT '相邻块重叠(字符)',
-    `splitter_pattern` VARCHAR(255) NOT NULL DEFAULT '' COMMENT '正则切分的正则(仅 regex 方式有值)',
+    -- 切分参数: 上传时为空(尚未选定), 解析时由用户所选方案写入; 不给默认值, 避免待解析文档显示"假参数"
+    `splitter_type` VARCHAR(32)  DEFAULT NULL COMMENT '切分方式: recursive/paragraph/sentence/line/word/character/regex; NULL=未解析时未指定',
+    `segment_size`  INT          DEFAULT NULL COMMENT '切分块大小(字符), NULL=未指定',
+    `overlap_size`  INT          DEFAULT NULL COMMENT '相邻块重叠(字符), NULL=未指定',
+    `splitter_pattern` VARCHAR(255) DEFAULT NULL COMMENT '正则切分的正则(仅 regex 方式有值)',
     `file_path`     VARCHAR(512) NOT NULL DEFAULT '' COMMENT '原始文件对象Key(local=相对路径如 upload/1_demo.pdf; minio=对象Key如 rag/2026/11/1_demo.pdf)',
     `storage_type`  VARCHAR(16)  NOT NULL DEFAULT 'local' COMMENT '存储方式: local 本地磁盘 / minio 对象存储',
     `segment_count` INT          NOT NULL DEFAULT 0 COMMENT '入库片段数(向量条数)',
@@ -129,12 +130,37 @@ CREATE TABLE IF NOT EXISTS `rag_segment` (
     `doc_id`      BIGINT       NOT NULL COMMENT '所属文档 id(rag_document.id)',
     `seq`         INT          NOT NULL COMMENT '片段序号(文档内从 0 递增)',
     `page`        INT          NULL COMMENT 'PDF 页码(1 起; txt/md 等文本类为空)',
+    `element_type` VARCHAR(16) NOT NULL DEFAULT 'text' COMMENT '元素类型: title/paragraph/table/list/text',
+    `section_path` VARCHAR(255) NULL COMMENT '章节路径(标题树, 如 "部署要求 > 2.1 服务器要求")',
+    -- 表格片段行号(数据行 1 起, 不含每块重复的表头): 拆成多块时展示"第 1~40 行 / 共 1000 行"; 非表格为 NULL
+    `row_start`   INT          NULL COMMENT '表格片段起始数据行号',
+    `row_end`     INT          NULL COMMENT '表格片段结束数据行号',
+    `row_total`   INT          NULL COMMENT '整张表数据行总数',
     `content`     MEDIUMTEXT   NOT NULL COMMENT '片段原文',
     `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间',
     PRIMARY KEY (`id`),
     UNIQUE KEY `uk_doc_seq` (`doc_id`, `seq`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4 COMMENT ='RAG 知识库片段表';
+
+-- 文档图片表(解析时提取的内嵌图片留底, 已存 FileStorage):
+-- caption 预留给 VLM 看图说话(未实现前 NULL); 重解析先删旧行与存储对象再插新
+DROP TABLE IF EXISTS `rag_image`;
+CREATE TABLE IF NOT EXISTS `rag_image` (
+    `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `doc_id`      BIGINT       NOT NULL COMMENT '所属文档 id(rag_document.id)',
+    `page`        INT          NULL COMMENT '页码(1 起; 非 PDF 为空)',
+    `object_key`  VARCHAR(500) NOT NULL COMMENT 'FileStorage 对象Key(local 相对路径 / minio Key)',
+    `file_name`   VARCHAR(255) NULL COMMENT '图片展示文件名',
+    `mime`        VARCHAR(32)  NULL COMMENT 'MIME 类型(统一 image/png)',
+    `width`       INT          NULL COMMENT '宽(px)',
+    `height`      INT          NULL COMMENT '高(px)',
+    `caption`     VARCHAR(1000) NULL COMMENT '图片描述(预留 VLM 看图说话)',
+    `create_time` DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '入库时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_doc` (`doc_id`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4 COMMENT ='RAG 文档图片表';
 
 -- =====================================================================================
 -- 智能问数(Text-to-SQL)相关表

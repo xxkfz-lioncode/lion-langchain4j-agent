@@ -36,6 +36,13 @@ const routes = [
         meta: { title: '知识库管理', parentTitle: '知识库', requiresAuth: true }
       },
       {
+        // 图片资源(解析 PDF 提取的内嵌图片: rag_image 留底 + 存储对象预览)
+        path: 'rag-images',
+        name: 'rag-images',
+        component: () => import('@/views/RagImageView.vue'),
+        meta: { title: '图片资源', parentTitle: '知识库', requiresAuth: true }
+      },
+      {
         // 知识库问答(纯聊天界面, 依据已入库文档回答)
         path: 'rag-chat',
         name: 'rag-chat',
